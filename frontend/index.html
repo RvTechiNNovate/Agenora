@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/scripts/framework-fields.css">
+    <script src="/static/scripts/framework-fields.js" defer></script>
+</head>
+<body>
+    <!-- <button id="mobile-menu-toggle" class="mobile-menu-toggle">
+        <i class="fas fa-bars"></i>
+    </button> -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>Agent Dashboard</h2>
+                <button id="sidebar-toggle" class="toggle-sidebar-btn">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+            </div>
+            <ul class="nav-links">
+                <li class="nav-item active" data-page="playground" title="Playground">
+                    <i class="fas fa-comments"></i>
+                    <span class="nav-text">Playground</span>
+                </li>
+                <li class="nav-item" data-page="agents" title="Agents">
+                    <i class="fas fa-robot"></i>
+                    <span class="nav-text">Agents</span>
+                </li>
+                <li class="nav-item" id="create-agent-btn" title="Create Agent">
+                    <i class="fas fa-plus-circle"></i>
+                    <span class="nav-text">Create Agent</span>
+                </li>
+                <li class="nav-item" data-page="settings" title="Settings">
+                    <i class="fas fa-cog"></i>
+                    <span class="nav-text">Settings</span>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <span class="version-text">v1.0.0</span>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="content">
+            <!-- Playground Page -->
+            <div class="page" id="playground-page">
+                <header class="page-header">
+                    <h1>Agent Playground</h1>
+                    <div class="agent-selector">
+                        <label for="playground-agent">Active Agent:</label>
+                        <select id="playground-agent"></select>
+                    </div>
+                </header>
+                
+                <div class="chat-container">
+                    <div class="chat-messages" id="chat-messages">
+                        <!-- Messages will be added here dynamically -->
+                        <div class="welcome-message">
+                            <h2>Welcome to the Agent Playground</h2>
+                            <p>Select a running agent from the dropdown above and start chatting!</p>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input">
+                        <textarea id="user-message" placeholder="Type your message here..."></textarea>
+                        <button id="send-message" class="primary-button">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="quick-prompts">
+                    <h3>Quick Prompts</h3>
+                    <div class="prompt-buttons">
+                        <button class="prompt-btn" onclick="setMessage('Tell me about the latest trends in artificial intelligence')">AI Trends</button>
+                        <button class="prompt-btn" onclick="setMessage('Help me create a marketing strategy for a small business')">Marketing Strategy</button>
+                        <button class="prompt-btn" onclick="setMessage('What are the best practices for team management?')">Team Management</button>
+                        <button class="prompt-btn" onclick="setMessage('Explain quantum computing in simple terms')">Quantum Computing</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Agents Page -->
+            <div class="page hidden" id="agents-page">
+                <header class="page-header">
+                    <h1>My Agents</h1>
+                    <button class="primary-button" id="agents-create-btn" onclick="showCreateAgentModal(); return false;">
+                        <i class="fas fa-plus"></i> New Agent
+                    </button>
+                </header>
+                
+                <div class="agents-grid" id="agents-grid">
+                    <!-- Agent cards will be added here dynamically -->
+                    <div class="loading-agents">Loading agents...</div>
+                </div>
+            </div>
+            
+            <!-- Settings Page -->
+            <div class="page hidden" id="settings-page">
+                <header class="page-header">
+                    <h1>Settings</h1>
+                    <button class="primary-button" id="save-settings-btn">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                </header>
+                
+                <div class="settings-container">
+                    <div class="settings-section">
+                        <h2>API Configuration</h2>
+                        <div class="settings-grid">
+                            <div class="setting-group">
+                                <h3>OpenAI</h3>
+                                <div class="form-group">
+                                    <label for="openai-api-key">API Key:</label>
+                                    <input type="password" id="openai-api-key" placeholder="sk-..." autocomplete="off">
+                                    <button class="toggle-password" type="button" onclick="togglePasswordVisibility(this)">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="setting-group">
+                                <h3>Azure OpenAI</h3>
+                                <div class="form-group">
+                                    <label for="azure-api-key">API Key:</label>
+                                    <input type="password" id="azure-api-key" placeholder="Enter Azure OpenAI API key" autocomplete="off">
+                                    <button class="toggle-password" type="button" onclick="togglePasswordVisibility(this)">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="form-group">
+                                    <label for="azure-endpoint">API Endpoint:</label>
+                                    <input type="text" id="azure-endpoint" placeholder="https://your-resource.openai.azure.com">
+                                </div>
+                            </div>
+                            
+                            <div class="setting-group">
+                                <h3>Groq</h3>
+                                <div class="form-group">
+                                    <label for="groq-api-key">API Key:</label>
+                                    <input type="password" id="groq-api-key" placeholder="Enter Groq API key" autocomplete="off">
+                                    <button class="toggle-password" type="button" onclick="togglePasswordVisibility(this)">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Create/Edit Agent Modal -->
+        <div class="modal" id="agent-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modal-title">Create New Agent</h2>
+                    <button class="close-modal">×</button>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="templates-section">
+                        <h3>Quick Templates</h3>
+                        <div class="template-buttons">
+                            <button type="button" class="template-btn" onclick="loadTemplate('research')">Research Assistant</button>
+                            <button type="button" class="template-btn" onclick="loadTemplate('writer')">Content Writer</button>
+                            <button type="button" class="template-btn" onclick="loadTemplate('analyst')">Business Analyst</button>
+                            <button type="button" class="template-btn" onclick="loadTemplate('coach')">Personal Coach</button>
+                        </div>
+                    </div>
+                    
+                    <form id="agent-form">
+                        <div class="form-group">
+                            <label for="framework">Framework:</label>
+                            <select id="framework">
+                                <option value="crewai">CrewAI</option>
+                                <option value="langchain">LangChain</option>
+                            </select>
+                            <div class="framework-description">
+                                <span id="crewai-description">CrewAI: A framework for creating multiple agents that work together as a team.</span>
+                                <span id="langchain-description" style="display: none;">LangChain: A framework for building applications with LLMs through composable components.</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="name">Agent Name:</label>
+                            <input type="text" id="name" placeholder="Enter agent name" value="Research Assistant" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="description">Description:</label>
+                            <input type="text" id="description" placeholder="Brief description of what this agent does" value="A helpful AI assistant that can research topics and provide detailed analysis" required>
+                        </div>
+
+                        <!-- CrewAI specific fields -->
+                        <div id="crewai-fields">
+                            <div class="form-group">
+                                <label for="role">Role:</label>
+                                <input type="text" id="role" placeholder="Agent's role" value="Senior Research Analyst">
+                            </div>
+
+                        <div class="form-group">
+                                <label for="backstory">Backstory:</label>
+                                <textarea id="backstory" placeholder="Provide some background for your agent">You are a highly experienced research analyst with expertise in data analysis, market research, and information synthesis. You have worked for top consulting firms and have a knack for finding patterns and insights in complex information.</textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="task">Task Description:</label>
+                                <textarea id="task" placeholder="What task should the agent perform?">Analyze user queries, conduct thorough research, and provide comprehensive, well-structured responses with actionable insights and recommendations.</textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- LangChain specific fields -->
+                        <div id="langchain-fields" style="display: none;">
+                            <div class="form-group">
+                                <label for="agent_type">Agent Type:</label>
+                                <select id="agent_type">
+                                    <option value="conversational">Conversational</option>
+                                    <option value="zero-shot-react-description">Zero-Shot React</option>
+                                    <option value="react-docstore">React DocStore</option>
+                                    <option value="structured-chat">Structured Chat</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="tools">Tools (comma separated):</label>
+                                <input type="text" id="tools" placeholder="e.g., search,calculator,weather">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="provider">LLM Provider:</label>
+                                <select id="provider">
+                                    <option value="openai">OpenAI</option>
+                                    <!-- Other providers will be added dynamically -->
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="model">Model:</label>
+                                <select id="model">
+                                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                                    <option value="gpt-4">GPT-4</option>
+                                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                    <!-- Models will be updated based on selected provider -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="temperature">Temperature: <span id="temperature-value">0.7</span></label>
+                            <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.7">
+                        </div>
+                        
+                        <div class="form-buttons">
+                            <button type="button" class="secondary-button" onclick="clearForm()">Reset</button>
+                            <button type="submit" class="primary-button" id="form-submit-btn">Create Agent</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Overlay for Modal Background -->
+        <div class="modal-overlay" id="modal-overlay"></div>
+        
+        <!-- Version History Modal -->
+        <div class="version-modal" id="version-modal">
+            <div class="version-modal-header">
+                <h2>Agent Version History</h2>
+                <button class="close-modal" id="close-version-modal">×</button>
+            </div>
+            <div class="version-modal-body">
+                <div id="version-list" class="version-list">
+                    <!-- Versions will be added here dynamically -->
+                    <div class="loading-versions">Loading version history...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/app.js"></script>
+    <script src="/static/version_history.js"></script>
+</body>
+</html>

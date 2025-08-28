@@ -1,0 +1,798 @@
+from fastapi import  Request, Depends, HTTPException, status
+from fastapi import APIRouter
+from fastapi.responses import FileResponse
+
+from pydantic import BaseModel, Field, create_model, validator
+from typing import Optional, List, Union, get_type_hints
+import os
+import logging
+import time
+from contextlib import asynccontextmanager
+from sqlalchemy.orm import Session
+
+# Import local modules
+from backend.config import config
+from backend.database import init_db, get_db, AgentModel
+from backend.utils.logging import get_logger
+from backend.utils.security import verify_api_key
+from backend.agent_manager import managers, default_manager
+
+# Use default manager for backward compatibility
+agent_manager = default_manager
+
+# Set up logging
+logger = get_logger(__name__)
+
+
+router = APIRouter(prefix="/api", tags=["agents"])
+# Include settings router
+
+# Add schema endpoints for framework-specific fields
+@router.get("/frameworks/schema",
+        summary="Get available frameworks and their schemas",
+        description="Returns the list of supported agent frameworks and their input schemas.")
+async def get_framework_schemas():
+    """Get all available frameworks and their schemas."""
+    # Define the fields for each framework
+    frameworks = {
+        "crewai": {
+            "name": "CrewAI",
+            "description": "Multi-agent framework for creating agent teams",
+            "fields": {
+                "role": {
+                    "type": "string",
+                    "description": "Role the agent should take",
+                    "default": "Assistant",
+                    "required": True
+                },
+                "backstory": {
+                    "type": "string",
+                    "description": "Background story for the agent",
+                    "default": "I'm an AI assistant created to help with various tasks.",
+                    "required": True
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Task description for the agent to perform",
+                    "default": "Answer user queries as they come in.",
+                    "required": True
+                }
+            }
+        },
+        "langchain": {
+            "name": "LangChain",
+            "description": "Framework for building applications with LLMs",
+            "fields": {
+                "agent_type": {
+                    "type": "string",
+                    "description": "Type of LangChain agent to create",
+                    "default": "conversational",
+                    "enum": ["conversational", "zero-shot-react-description", "react-docstore", "structured-chat"],
+                    "required": True
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of tool names to add to the agent",
+                    "default": [],
+                    "required": False
+                }
+            }
+        }
+    }
+    
+    # Define the common fields for all frameworks
+    common_fields = {
+        "name": {
+            "type": "string",
+            "description": "Name of the agent",
+            "required": True
+        },
+        "description": {
+            "type": "string",
+            "description": "Description of the agent's purpose",
+            "required": True
+        },
+        "framework": {
+            "type": "string",
+            "description": "Agent framework to use",
+            "enum": list(frameworks.keys()),
+            "required": True
+        },
+        "model": {
+            "type": "string",
+            "description": "Language model to use",
+            "default": "gpt-3.5-turbo",
+            "required": True
+        },
+        "model_settings": {
+            "type": "object",
+            "description": "Model configuration settings",
+            "properties": {
+                "temperature": {"type": "number", "minimum": 0, "maximum": 1},
+                "max_tokens": {"type": "integer"},
+                "top_p": {"type": "number"}
+            },
+            "required": False
+        }
+    }
+    
+    return {
+        "frameworks": frameworks,
+        "common_fields": common_fields
+    }
+
+@router.get("/frameworks",
+        summary="Get available frameworks",
+        description="Returns the list of supported agent frameworks.")
+async def get_frameworks():
+    """Get all available frameworks."""
+    return {
+        "frameworks": list(managers.keys())
+    }
+
+
+
+# API Models
+class ModelSettings(BaseModel):
+    """Model configuration settings."""
+    temperature: float = Field(0.7, ge=0.0, le=1.0, description="Temperature for text generation (0.0 to 1.0)")
+    max_tokens: Optional[int] = Field(None, description="Maximum tokens to generate, or null for model default")
+    
+    class Config:
+        """Pydantic model configuration."""
+        schema_extra = {
+            "example": {
+                "temperature": 0.7,
+                "max_tokens": 2048
+            }
+        }
+
+class BaseAgentTask(BaseModel):
+    """Base agent configuration for creation."""
+    name: str = Field(..., description="Name of the agent")
+    description: str = Field(..., description="Description of the agent's purpose")
+    framework: str = Field(..., description="Agent framework to use (crewai, langchain, etc.)")
+    model: str = Field("gpt-3.5-turbo", description="Language model to use")
+    model_settings: Optional[ModelSettings] = Field(None, description="Model configuration settings")
+
+
+class CrewAIAgentTask(BaseAgentTask):
+    """CrewAI specific agent configuration."""
+    role: str = Field("Assistant", description="Role the agent should take")
+    backstory: str = Field("I'm an AI assistant created to help with various tasks.", 
+                          description="Background story for the agent")
+    task: str = Field("Answer user queries as they come in.", 
+                     description="Task description for the agent to perform")
+    
+    class Config:
+        """Pydantic model configuration."""
+        schema_extra = {
+            "example": {
+                "name": "Research Assistant",
+                "description": "An AI assistant that helps with research tasks",
+                "framework": "crewai",
+                "role": "Senior Research Analyst",
+                "backstory": "You are a knowledgeable research assistant with expertise in data analysis.",
+                "task": "Provide in-depth research and analysis on various topics",
+                "model": "gpt-3.5-turbo",
+                "model_settings": {"temperature": 0.7}
+            }
+        }
+
+
+class LangChainAgentTask(BaseAgentTask):
+    """LangChain specific agent configuration."""
+    agent_type: str = Field("conversational", 
+                           description="Type of LangChain agent to create")
+    tools: List[str] = Field([], 
+                            description="List of tool names to add to the agent")
+    
+    class Config:
+        """Pydantic model configuration."""
+        schema_extra = {
+            "example": {
+                "name": "Research Assistant",
+                "description": "An AI assistant that helps with research tasks",
+                "framework": "langchain",
+                "agent_type": "conversational",
+                "tools": [],
+                "model": "gpt-3.5-turbo",
+                "model_settings": {"temperature": 0.7}
+            }
+        }
+
+
+# Union type for all framework-specific agent tasks
+AgentTask = Union[CrewAIAgentTask, LangChainAgentTask]
+    
+class QueryRequest(BaseModel):
+    """Request model for querying an agent."""
+    query: str = Field(..., description="The query text to send to the agent")
+    
+    class Config:
+        """Pydantic model configuration."""
+        schema_extra = {
+            "example": {
+                "query": "What are the latest trends in artificial intelligence?"
+            }
+        }
+        
+class AgentResponse(BaseModel):
+    """Response model for agent information."""
+    id: int
+    name: str
+    description: str
+    framework: str
+    status: str
+    model: str
+    version: int = 1
+    created_at: Optional[str] = None
+    
+class AgentCreateResponse(BaseModel):
+    """Response model for agent creation."""
+    agent_id: int
+    agent: AgentResponse
+    
+class AgentVersionResponse(BaseModel):
+    """Response model for agent version information."""
+    id: int
+    agent_id: int
+    version_number: int
+    name: str
+    description: str
+    framework: str
+    model: str
+    created_at: str
+
+@router.post("/agent", 
+         response_model=AgentCreateResponse,
+         dependencies=[Depends(verify_api_key)],
+         summary="Create a new agent",
+         description="Create a new agent with the specified configuration.")
+async def create_agent(request: Request):
+    """Create a new agent with the given configuration."""
+    # Parse request body
+    data = await request.json()
+    
+    # Validate framework first
+    if "framework" not in data:
+        raise HTTPException(status_code=400, detail="Framework must be specified")
+    
+    framework = data.get("framework", "crewai")
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info(f"Create agent request from {client_ip} for framework: {framework}")
+    
+    # Validate required fields based on framework
+    try:
+        # Common fields validation
+        required_fields = ["name", "description", "model"]
+        for field in required_fields:
+            if field not in data or not data[field]:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Framework-specific field validation
+        if framework == "crewai":
+            # CrewAI specific fields
+            crewai_fields = ["role", "backstory", "task", "expected_output"]
+            for field in crewai_fields:
+                if field not in data or not data[field]:
+                    if field == "backstory" and not data.get(field):
+                        data[field] = "I'm an AI assistant created to help with various tasks."
+                    elif field == "task" and not data.get(field):
+                        data[field] = "Answer user queries as they come in."
+                    elif field == "role" and not data.get(field):
+                        data[field] = "Assistant"
+                    elif field == "expected_output" and not data.get(field):
+                        data[field] = "A helpful and comprehensive response to the user's query"
+                    else:
+                        raise HTTPException(status_code=400, detail=f"Missing required field for CrewAI: {field}")
+        elif framework == "langchain":
+            # LangChain specific fields
+            if "agent_type" not in data or not data["agent_type"]:
+                data["agent_type"] = "conversational"
+            if "tools" not in data:
+                data["tools"] = []
+            
+            # Store LangChain specific fields in a framework_config
+            framework_config = {}
+            for field in ["agent_type", "tools"]:
+                if field in data:
+                    framework_config[field] = data[field]
+            
+            # Modify the task to ensure compatibility with current database
+            data["role"] = "LangChain Agent"  # Use a placeholder for the role field
+            data["task"] = f"Agent type: {data['agent_type']}"
+            data["backstory"] = "LangChain agent with the following tools: " + ", ".join(data.get("tools", []) or ["none"])
+            data["framework_config"] = framework_config
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported framework: {framework}")
+        
+        # Convert to dict to pass to manager
+        task_dict = data
+        
+        # Rename the field for compatibility with the manager
+        if task_dict.get("model_settings"):
+            task_dict["model_config"] = task_dict.pop("model_settings")
+        
+        # Get the appropriate manager for the framework
+        if framework in managers:
+            framework_manager = managers[framework]
+        else:
+            logger.warning(f"Framework {framework} not supported, using default")
+            framework_manager = default_manager
+        
+        # Create agent using the selected manager
+        agent_id = framework_manager.create_agent(task_dict)
+        
+        logger.info(f"Created agent {agent_id} with name {task_dict['name']}")
+        
+        return {
+            "agent_id": agent_id, 
+            "agent": {
+                "id": agent_id,
+                "name": task_dict["name"],
+                "description": task_dict["description"],
+                "framework": task_dict["framework"],
+                "status": "stopped",
+                "model": task_dict["model"]
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error creating agent: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create agent: {str(e)}"
+        )
+
+@router.get("/agents", 
+        dependencies=[Depends(verify_api_key)],
+        summary="List all agents",
+        description="Get a list of all created agents with their status.")
+async def list_agents():
+    """List all agents in the system."""
+    # Combine agents from all managers
+    all_agents = {}
+    for framework, manager in managers.items():
+        framework_agents = manager.get_all_agents()
+        all_agents.update(framework_agents)
+    
+    return all_agents
+
+@router.get("/agent/{agent_id}", 
+        dependencies=[Depends(verify_api_key)],
+        summary="Get agent details",
+        description="Get detailed information about a specific agent.")
+async def get_agent(agent_id: int, db: Session = Depends(get_db)):
+    """Get detailed information about a specific agent."""
+    from backend.database import AgentModel
+    
+    agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    return agent.to_dict()
+
+@router.put("/agent/{agent_id}",
+        dependencies=[Depends(verify_api_key)],
+        summary="Update an agent",
+        description="Update a specific agent's configuration.")
+async def update_agent(agent_id: int, request: Request, db: Session = Depends(get_db)):
+    """Update an agent by ID."""
+    logger.info(f"Attempting to update agent {agent_id}")
+    
+    # Parse request body
+    data = await request.json()
+    
+    # Get the agent to determine its framework
+    from backend.database import AgentModel
+    agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get the framework, defaulting to the agent's current framework
+    framework = data.get("framework") or agent.framework
+    
+    # Apply framework-specific logic
+    try:
+        # Validate common fields
+        for field in ["name", "description"]:
+            if field in data and not data[field]:
+                raise HTTPException(status_code=400, detail=f"Field cannot be empty: {field}")
+        
+        if framework == "crewai":
+            # CrewAI specific validation
+            crewai_fields = ["role", "backstory", "task"]
+            for field in crewai_fields:
+                if field in data and not data[field]:
+                    if field == "backstory":
+                        data[field] = "I'm an AI assistant created to help with various tasks."
+                    elif field == "task":
+                        data[field] = "Answer user queries as they come in."
+                    elif field == "role":
+                        data[field] = "Assistant"
+        elif framework == "langchain":
+            # LangChain specific processing
+            if "agent_type" in data and not data["agent_type"]:
+                data["agent_type"] = "conversational"
+                
+            if "tools" in data and not isinstance(data["tools"], list):
+                data["tools"] = []
+            
+            # Store LangChain specific fields in a framework_config
+            framework_config = agent.framework_config if hasattr(agent, "framework_config") else {}
+            
+            for field in ["agent_type", "tools"]:
+                if field in data:
+                    framework_config[field] = data[field]
+            
+            # Update the data to ensure compatibility with current database
+            data["role"] = "LangChain Agent"  # Use a placeholder for the role field
+            data["task"] = f"Agent type: {data.get('agent_type', framework_config.get('agent_type', 'conversational'))}"
+            tools_list = data.get("tools", framework_config.get("tools", []))
+            data["backstory"] = "LangChain agent with the following tools: " + ", ".join(tools_list or ["none"])
+            data["framework_config"] = framework_config
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported framework: {framework}")
+    except Exception as e:
+        if not isinstance(e, HTTPException):
+            raise HTTPException(status_code=400, detail=f"Invalid input for framework {framework}: {str(e)}")
+        else:
+            raise
+    
+    # Find the agent in the database to determine which framework to use
+    agent_db = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get the appropriate manager
+    framework = agent_db.framework
+    if framework in managers:
+        manager = managers[framework]
+    else:
+        logger.warning(f"Framework {framework} not supported, using default manager")
+        manager = default_manager
+    
+    # Before updating, create a version of the current state
+    from backend.database import AgentVersionModel
+    current_version = agent_db.version
+    new_version = AgentVersionModel.from_agent(agent_db, current_version)
+    db.add(new_version)
+    
+    # Use the data dict to pass to manager
+    task_dict = data
+    
+    # Rename the field back for compatibility with the manager
+    if task_dict.get("model_settings"):
+        task_dict["model_config"] = task_dict.pop("model_settings")
+    
+    # Update the agent
+    success = manager.update_agent(agent_id, task_dict)
+    
+    if success:
+        # Increment the version number
+        updated_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+        updated_agent.version = current_version + 1
+        db.commit()
+        
+        return {
+            "agent_id": agent_id,
+            "agent": {
+                "id": agent_id,
+                "name": updated_agent.name,
+                "description": updated_agent.description,
+                "framework": updated_agent.framework,
+                "status": updated_agent.status,
+                "model": updated_agent.model,
+                "version": updated_agent.version
+            }
+        }
+    
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Failed to update agent"
+    )
+
+@router.post("/agent/{agent_id}/start",
+         dependencies=[Depends(verify_api_key)],
+         summary="Start an agent",
+         description="Start a specific agent to prepare it for processing queries.")
+async def start_agent(agent_id: int, db: Session = Depends(get_db)):
+    """Start an agent by ID."""
+    logger.info(f"Attempting to start agent {agent_id}")
+    
+    # Find the agent in the database to determine which framework to use
+    agent_db = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get the appropriate manager
+    framework = agent_db.framework
+    if framework in managers:
+        manager = managers[framework]
+    else:
+        logger.warning(f"Framework {framework} not supported, using default manager")
+        manager = default_manager
+    
+    # Start the agent
+    success = manager.start_agent(agent_id)
+    logger.info(f"Agent {agent_id} start result: {success}")
+    
+    if success:
+        return {"status": "started"}
+    
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Agent not found or failed to start"
+    )
+
+@router.post("/agent/{agent_id}/stop",
+         dependencies=[Depends(verify_api_key)],
+         summary="Stop an agent",
+         description="Stop a running agent.")
+async def stop_agent(agent_id: int, db: Session = Depends(get_db)):
+    """Stop an agent by ID."""
+    # Find the agent in the database to determine which framework to use
+    agent_db = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get the appropriate manager
+    framework = agent_db.framework
+    if framework in managers:
+        manager = managers[framework]
+    else:
+        logger.warning(f"Framework {framework} not supported, using default manager")
+        manager = default_manager
+    
+    success = manager.stop_agent(agent_id)
+    
+    if success:
+        return {"status": "stopped"}
+    
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Agent not found"
+    )
+    
+@router.delete("/agent/{agent_id}",
+         dependencies=[Depends(verify_api_key)],
+         summary="Delete an agent",
+         description="Permanently delete an agent and all associated resources.")
+async def delete_agent(agent_id: int, db: Session = Depends(get_db)):
+    """Delete an agent by ID."""
+    logger.info(f"Attempting to delete agent {agent_id}")
+    
+    # Find the agent in the database to determine which framework to use
+    agent_db = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get the appropriate manager
+    framework = agent_db.framework
+    if framework in managers:
+        manager = managers[framework]
+    else:
+        logger.warning(f"Framework {framework} not supported, using default manager")
+        manager = default_manager
+    
+    success = manager.delete_agent(agent_id)
+    
+    if success:
+        return {"status": "deleted", "message": f"Agent {agent_id} deleted successfully"}
+    
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Failed to delete agent"
+    )
+
+@router.post("/agent/{agent_id}/query",
+         dependencies=[Depends(verify_api_key)],
+         summary="Query an agent",
+         description="Send a query to a running agent and get a response.")
+async def query_agent(agent_id: int, query_req: QueryRequest, request: Request, db: Session = Depends(get_db)):
+    """Query a running agent."""
+    client_ip = request.client.host if request.client else "unknown"
+    logger.info(f"Query for agent {agent_id} from {client_ip}: {query_req.query[:50]}...")
+    
+    # Validate query length
+    if len(query_req.query) > 2000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query too long. Maximum length is 2000 characters."
+        )
+    
+    # Find the agent in the database to determine which framework to use
+    agent_db = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get the appropriate manager
+    framework = agent_db.framework
+    if framework in managers:
+        manager = managers[framework]
+    else:
+        logger.warning(f"Framework {framework} not supported, using default manager")
+        manager = default_manager
+    
+    result = manager.query_agent(agent_id, query_req.query)
+    
+    if "error" in result:
+        if "not found" in result["error"].lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result["error"]
+            )
+        elif "not running" in result["error"].lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result["error"]
+            )
+    
+    return result
+
+@router.get("/frameworks", 
+        summary="List available agent frameworks",
+        description="Get a list of all supported agent frameworks.")
+async def list_frameworks():
+    """List all supported agent frameworks."""
+    return {"frameworks": list(managers.keys())}
+
+@router.get("/llm/providers",
+        summary="List available LLM providers",
+        description="Get a list of all supported LLM providers.")
+async def list_llm_providers():
+    """List all supported LLM providers."""
+    from backend.llm_providers.manager import provider_manager
+    return {"providers": provider_manager.list_providers()}
+
+@router.get("/llm/models",
+        summary="List available LLM models",
+        description="Get a list of available models, optionally filtered by provider.")
+async def list_llm_models(provider: Optional[str] = None):
+    """List available models for a provider or all providers."""
+    from backend.llm_providers.manager import provider_manager
+    return {"models": provider_manager.list_models(provider)}
+
+@router.get("/health", 
+        summary="Health check",
+        description="Check if the API is running and healthy.")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "environment": config.server.environment
+    }
+
+@router.get("/agent/{agent_id}/versions", 
+        dependencies=[Depends(verify_api_key)],
+        summary="Get agent version history",
+        description="Get the version history for a specific agent.")
+async def get_agent_versions(agent_id: int, db: Session = Depends(get_db)):
+    """Get version history for an agent."""
+    from backend.database import AgentModel, AgentVersionModel
+    
+    # Check if agent exists
+    agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get all versions for this agent
+    versions = db.query(AgentVersionModel).filter(
+        AgentVersionModel.agent_id == agent_id
+    ).order_by(AgentVersionModel.version_number.desc()).all()
+    
+    # Include current version as well
+    current_version = {
+        "id": None,  # No version ID for current state
+        "agent_id": agent.id,
+        "version_number": agent.version,
+        "name": agent.name,
+        "description": agent.description,
+        "framework": agent.framework,
+        "model": agent.model,
+        "created_at": agent.updated_at.isoformat() if agent.updated_at else None,
+        "is_current": True
+    }
+    
+    # Format the response
+    version_history = [current_version] + [
+        {**v.to_dict(), "is_current": False} 
+        for v in versions
+    ]
+    
+    return {"versions": version_history}
+
+@router.post("/agent/{agent_id}/restore/{version_number}", 
+        dependencies=[Depends(verify_api_key)],
+        summary="Restore agent version",
+        description="Restore an agent to a previous version.")
+async def restore_agent_version(agent_id: int, version_number: int, db: Session = Depends(get_db)):
+    """Restore an agent to a previous version."""
+    from backend.database import AgentModel, AgentVersionModel
+    
+    # Check if agent exists
+    agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID {agent_id} not found"
+        )
+    
+    # Get the specified version
+    version = db.query(AgentVersionModel).filter(
+        AgentVersionModel.agent_id == agent_id,
+        AgentVersionModel.version_number == version_number
+    ).first()
+    
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Version {version_number} for agent {agent_id} not found"
+        )
+    
+    # Create a new version based on current state before restoring
+    current_version = AgentVersionModel.from_agent(agent, agent.version)
+    db.add(current_version)
+    
+    # Restore the agent to the specified version
+    agent.name = version.name
+    agent.description = version.description
+    agent.framework = version.framework
+    agent.role = version.role
+    agent.backstory = version.backstory
+    agent.task = version.task
+    agent.model = version.model
+    agent.model_config = version.model_config
+    agent.version = agent.version + 1  # Increment version number
+    
+    db.commit()
+    
+    # Get the right manager for this framework
+    framework = agent.framework
+    if framework in managers:
+        manager = managers[framework]
+    else:
+        logger.warning(f"Framework {framework} not supported, using default manager")
+        manager = default_manager
+    
+    # Update the manager's cache
+    if agent.id in manager.agents:
+        manager.agents[agent.id]["config"] = agent.to_dict()
+    
+    return {
+        "agent_id": agent_id,
+        "message": f"Agent restored to version {version_number}",
+        "agent": agent.to_dict()
+    }
+
