@@ -1,9 +1,8 @@
 
-# Agent Dashboard 🚀
+🚀 Agenora
 
-A **production-ready web dashboard** for creating, managing, and interacting with AI agents.  
-Currently supports **CrewAI**, with plans to add **LangChain** and other frameworks in the future.
-
+Agenora is an open-source platform to test, compare, and evaluate AI agents across multiple frameworks (e.g., CrewAI, LangChain) and model providers (e.g., OpenAI, Anthropic, DeepSeek).
+It provides built-in token usage & cost tracking, making it easy to monitor performance and expenses in one place
 ---
 
 ## ✨ Features
