@@ -2,10 +2,8 @@ from crewai import Agent, Task, Crew
 import os
 import time
 from typing import Dict, List, Optional, Any, Union
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-from sqlalchemy.orm import Session
-from backend.database import AgentModel, SessionLocal
+from backend.database import SessionLocal
+from backend.models import AgentModel, CrewAIAgentModel
 from backend.utils.logging import get_logger
 from backend.config import config
 from backend.agent_manager.base import BaseAgentManager, running_tasks
@@ -23,11 +21,29 @@ class CrewAIManager(BaseAgentManager):
     def framework_name(self) -> str:
         """Return the name of the framework this manager handles."""
         return "crewai"
+    
+    def get_schema(self) -> Any:
+        """Get the schema for CrewAI framework."""
+        from backend.schemas import FrameworkSchema
+        from typing import List
+        
+        return FrameworkSchema(
+            name="CrewAI",
+            description="Multi-agent framework for creating agent teams",
+            fields={
+                "role": str,
+                "backstory": str,
+                "task": str,
+                "expected_output": str
+            }
+        )
         
     def _cleanup_agent_resources(self, agent_id: int):
         """Clean up CrewAI specific resources."""
         if agent_id in self.crews:
             del self.crews[agent_id]
+        # Update status to stopped
+        super().update_agent_status(agent_id, "stopped")
     
     def start_agent(self, agent_id: int) -> bool:
         """Start an agent by creating its CrewAI instance and update database."""        
@@ -44,7 +60,7 @@ class CrewAIManager(BaseAgentManager):
             config = self.agents[agent_id]["config"]
             
             # Set up language model
-            model_name = config.get("model", "gpt-3.5-turbo")
+            model_name = config.get("model")
             model_config = config.get("model_config", {})
             temperature = float(model_config.get("temperature", 0.7))
             max_tokens = model_config.get("max_tokens")
@@ -68,18 +84,18 @@ class CrewAIManager(BaseAgentManager):
             
             # Create CrewAI agent
             agent = Agent(
-                role=config.get("role", "Assistant"),
-                goal=config.get("description", "Help the user with their query"),
-                backstory=config.get("backstory", "I'm an AI assistant created to help with various tasks."),
+                role=config.get("role"),
+                goal=config.get("description"),
+                backstory=config.get("backstory"),
                 verbose=True,
                 llm=llm
             )
             
             # Create a task for this agent
             task = Task(
-                description=config.get("task", "Answer user queries as they come in."),
+                description=config.get("task"),
                 agent=agent,
-                expected_output=config.get("expected_output","A helpful and comprehensive response to the user's query")
+                expected_output=config.get("expected_output")
             )
             
             # Create a crew with this agent
@@ -126,9 +142,7 @@ class CrewAIManager(BaseAgentManager):
                 db.close()
                 
             return False
-    
-
-    
+        
     def query_agent(self, agent_id: int, query: str, max_retries: int = 2) -> Dict[str, Any]:
         """Run a query against a CrewAI agent with retry logic."""
         # Add CrewAI specific validation
@@ -187,7 +201,21 @@ class CrewAIManager(BaseAgentManager):
             
             # Return a user-friendly error message
             return f"Sorry, I encountered an error while processing your request: {str(e)}"
-        
+            
+    def validate_agent_config(self, config: Dict[str, Any]) -> Union[bool, str]:
+        """Validate CrewAI agent configuration."""
+        required_fields = ["role", "task", "model","expected_output","backstory"]
+        for field in required_fields:
+            if field not in config:
+                logger.error(f"Validation failed: Missing field {field}")
+                return f"Missing required field: {field}"
+        for field in required_fields:
+            if not config[field]:
+                logger.error(f"Validation failed: Empty field {field}")
+                return f"Field '{field}' cannot be empty"
+        # Additional validation can be added here
+        logger.info("CrewAI agent configuration validated successfully")
+        return True
 
 
 # Singleton instance

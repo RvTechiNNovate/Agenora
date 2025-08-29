@@ -30,14 +30,6 @@ class AgentProviderManager:
             provider = AgentManagerFactory.create_manager(framework)
             if provider:
                 self.register_provider(framework, provider)
-      
-        # Set default framework
-        self.default_framework = "crewai"
-        if self.default_framework not in self.providers:
-            if len(self.providers) > 0:
-                self.default_framework = list(self.providers.keys())[0]
-            else:
-                logger.error("No valid agent providers available")
     
     def register_provider(self, framework: str, provider: BaseAgentManager) -> None:
         """Register a provider with this manager."""

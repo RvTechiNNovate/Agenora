@@ -180,10 +180,12 @@
                             <select id="framework">
                                 <option value="crewai">CrewAI</option>
                                 <option value="langchain">LangChain</option>
+                                <option value="agno">Agno</option>
                             </select>
                             <div class="framework-description">
                                 <span id="crewai-description">CrewAI: A framework for creating multiple agents that work together as a team.</span>
                                 <span id="langchain-description" style="display: none;">LangChain: A framework for building applications with LLMs through composable components.</span>
+                                <span id="agno-description" style="display: none;">Agno: A lightweight framework for creating agents with a focus on simplicity and versatility.</span>
                             </div>
                         </div>
 
@@ -230,6 +232,34 @@
                             <div class="form-group">
                                 <label for="tools">Tools (comma separated):</label>
                                 <input type="text" id="tools" placeholder="e.g., search,calculator,weather">
+                            </div>
+                        </div>
+                        
+                        <!-- Agno specific fields -->
+                        <div id="agno-fields" style="display: none;">
+                            <div class="form-group">
+                                <label for="model_id">Model ID:</label>
+                                <input type="text" id="model_id" value="claude-3-7-sonnet-latest" placeholder="e.g., claude-3-7-sonnet-latest, gpt-4, etc.">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="agno_tools">Tools (comma separated):</label>
+                                <input type="text" id="agno_tools" placeholder="e.g., yfinance,wikipedia,web">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="instructions">Instructions (one per line):</label>
+                                <textarea id="instructions" rows="4" placeholder="Use tables to display data.&#10;Only include the table in your response. No other text."></textarea>
+                            </div>
+                            
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="markdown" checked>
+                                <label for="markdown">Enable Markdown</label>
+                            </div>
+                            
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="stream" checked>
+                                <label for="stream">Stream Response</label>
                             </div>
                         </div>
                         

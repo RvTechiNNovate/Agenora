@@ -6,7 +6,8 @@ from typing import Dict, List, Optional, Any, Union
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.orm import Session
-from backend.database import AgentModel, get_db, SessionLocal
+from backend.database import get_db, SessionLocal
+from backend.models import AgentModel, CrewAIAgentModel, LangChainAgentModel, AgnoAgentModel
 from backend.config import config
 from backend.utils.logging import get_logger
 
@@ -28,6 +29,19 @@ class BaseAgentManager:
         # Initialize in-memory cache from database
         self._load_agents_from_db()
     
+    def validate_agent_config(self, config: Dict[str, Any]) -> Union[bool, str]:
+        """Validate the given agent configuration."""
+        raise NotImplemented("subclass must implement validate_agent_config")
+
+    def get_schema(self) -> Any:
+        """
+        Get the schema for this agent framework.
+
+        Returns:
+            A FrameworkSchema object describing the fields required by this framework.
+        """
+        raise NotImplementedError("Subclasses must implement get_schema")
+    
     def _load_agents_from_db(self):
         """Load existing agents from the database into memory."""
         try:
@@ -35,17 +49,27 @@ class BaseAgentManager:
             db_agents = db.query(AgentModel).filter(AgentModel.framework == self.framework_name).all()
             
             for agent in db_agents:
+                config = {
+                    "name": agent.name,
+                    "description": agent.description,
+                    "framework": agent.framework,
+                    "model": agent.model,
+                    "model_config": agent.model_config,
+                }
+                
+                # Add framework-specific configuration
+                if agent.framework == "crewai" and agent.crewai_config:
+                    # Use the to_dict method for consistent serialization
+                    config.update(agent.crewai_config.to_dict())
+                elif agent.framework == "langchain" and agent.langchain_config:
+                    # Use the to_dict method for consistent serialization
+                    config.update(agent.langchain_config.to_dict())
+                elif agent.framework == "agno" and agent.agno_config:
+                    # Use the to_dict method for consistent serialization
+                    config.update(agent.agno_config.to_dict())
+                
                 self.agents[agent.id] = {
-                    "config": {
-                        "name": agent.name,
-                        "description": agent.description,
-                        "framework": agent.framework,
-                        "role": agent.role,
-                        "backstory": agent.backstory,
-                        "task": agent.task,
-                        "model": agent.model,
-                        "model_config": agent.model_config,
-                    },
+                    "config": config,
                     "status": agent.status,
                     "instance": None,
                     "results": [],
@@ -67,8 +91,55 @@ class BaseAgentManager:
             
             # Create database record
             db = SessionLocal()
-            db_agent = AgentModel.from_dict(config)
+            
+            # Create base agent model
+            db_agent = AgentModel(
+                name=config["name"],
+                description=config.get("description"),
+                framework=self.framework_name,
+                model=config.get("model"),
+                model_config=config.get("model_config"),
+                status="stopped"
+            )
             db.add(db_agent)
+            db.flush()  # Get the ID without committing
+            
+            # Add framework-specific configuration
+            if self.framework_name == "crewai":
+                
+                # Import here to avoid circular imports
+                from backend.agent_manager.agent_providers.crewai.config import CrewAIConfig
+                
+                # Create config object for better validation and defaults
+                crewai_config_obj = CrewAIConfig.from_dict(config)
+                
+                # Create database model from config object
+                crewai_model = CrewAIAgentModel.from_dict(crewai_config_obj.to_dict(), db_agent.id)
+                db.add(crewai_model)
+                
+            elif self.framework_name == "langchain":
+                # Import here to avoid circular imports
+                from backend.agent_manager.agent_providers.langchain.config import LangChainConfig
+                # from backend.agent_manager.agent_providers.langchain.models import LangChainAgentModel
+                
+                # Create config object for better validation and defaults
+                langchain_config_obj = LangChainConfig.from_dict(config)
+                
+                # Create database model from config object
+                langchain_model = LangChainAgentModel.from_dict(langchain_config_obj.to_dict(), db_agent.id)
+                db.add(langchain_model)
+                
+            elif self.framework_name == "agno":
+                # Import here to avoid circular imports
+                from backend.agent_manager.agent_providers.agno.config import AgnoConfig
+                
+                # Create config object for better validation and defaults
+                agno_config_obj = AgnoConfig.from_dict(config)
+                
+                # Create database model from config object
+                agno_model = AgnoAgentModel.from_dict(agno_config_obj.to_dict(), db_agent.id)
+                db.add(agno_model)
+            
             db.commit()
             db.refresh(db_agent)
             
@@ -267,28 +338,110 @@ class BaseAgentManager:
                 logger.warning(f"Agent {agent_id} not found in database")
                 return False
                 
-            # Update fields
+            # Update base fields
             db_agent.name = config.get("name", db_agent.name)
             db_agent.description = config.get("description", db_agent.description)
-            db_agent.role = config.get("role", db_agent.role)
-            db_agent.backstory = config.get("backstory", db_agent.backstory)
-            db_agent.task = config.get("task", db_agent.task)
             db_agent.model = config.get("model", db_agent.model)
             db_agent.model_config = config.get("model_config", db_agent.model_config)
             
+            # Update framework-specific fields
+            if self.framework_name == "crewai":
+                # Import here to avoid circular imports
+                from backend.agent_manager.agent_providers.crewai.config import CrewAIConfig
+                
+                # Create config object with current values merged with new values
+                current_config = {}
+                if db_agent.crewai_config:
+                    current_config = db_agent.crewai_config.to_dict()
+                
+                # Merge with new config values
+                merged_config = {**current_config, **config}
+                crewai_config_obj = CrewAIConfig.from_dict(merged_config)
+                
+                # Update or create the model
+                if not db_agent.crewai_config:
+                    db_agent.crewai_config = CrewAIAgentModel.from_dict(crewai_config_obj.to_dict(), agent_id)
+                else:
+                    # Update fields individually to preserve the existing record
+                    db_agent.crewai_config.role = crewai_config_obj.role
+                    db_agent.crewai_config.backstory = crewai_config_obj.backstory
+                    db_agent.crewai_config.task = crewai_config_obj.task
+                    db_agent.crewai_config.goals = crewai_config_obj.goals
+                    db_agent.crewai_config.tools = crewai_config_obj.tools
+                    db_agent.crewai_config.memory_enabled = crewai_config_obj.memory_enabled
+                    db_agent.crewai_config.expected_output = crewai_config_obj.expected_output
+                
+            elif self.framework_name == "langchain":
+                # Import here to avoid circular imports
+                from backend.agent_manager.agent_providers.langchain.config import LangChainConfig
+                # from backend.agent_manager.agent_providers.langchain.models import LangChainAgentModel
+                
+                # Create config object with current values merged with new values
+                current_config = {}
+                if db_agent.langchain_config:
+                    current_config = db_agent.langchain_config.to_dict()
+                
+                # Merge with new config values
+                merged_config = {**current_config, **config}
+                langchain_config_obj = LangChainConfig.from_dict(merged_config)
+                
+                # Update or create the model
+                if not db_agent.langchain_config:
+                    db_agent.langchain_config = LangChainAgentModel.from_dict(langchain_config_obj.to_dict(), agent_id)
+                else:
+                    # Update fields individually to preserve the existing record
+                    db_agent.langchain_config.agent_type = langchain_config_obj.agent_type
+                    db_agent.langchain_config.tools = langchain_config_obj.tools
+                    db_agent.langchain_config.memory_type = langchain_config_obj.memory_type
+                    db_agent.langchain_config.verbose = langchain_config_obj.verbose
+                    db_agent.langchain_config.chain_type = langchain_config_obj.chain_type
+                    
+            elif self.framework_name == "agno":
+                # Import here to avoid circular imports
+                from backend.agent_manager.agent_providers.agno.config import AgnoConfig
+                
+                # Create config object with current values merged with new values
+                current_config = {}
+                if db_agent.agno_config:
+                    current_config = db_agent.agno_config.to_dict()
+                
+                # Merge with new config values
+                merged_config = {**current_config, **config}
+                agno_config_obj = AgnoConfig.from_dict(merged_config)
+                
+                # Update or create the model
+                if not db_agent.agno_config:
+                    db_agent.agno_config = AgnoAgentModel.from_dict(agno_config_obj.to_dict(), agent_id)
+                else:
+                    # Update fields individually to preserve the existing record
+                    db_agent.agno_config.model_id = agno_config_obj.model_id
+                    db_agent.agno_config.tools = agno_config_obj.tools
+                    db_agent.agno_config.instructions = agno_config_obj.instructions
+                    db_agent.agno_config.markdown = agno_config_obj.markdown
+                    db_agent.agno_config.stream = agno_config_obj.stream
+            
             db.commit()
             
-            # Update memory cache
-            self.agents[agent_id]["config"] = {
+            # Update memory cache with framework-specific config
+            cache_config = {
                 "name": db_agent.name,
                 "description": db_agent.description,
                 "framework": db_agent.framework,
-                "role": db_agent.role,
-                "backstory": db_agent.backstory,
-                "task": db_agent.task,
                 "model": db_agent.model,
                 "model_config": db_agent.model_config,
             }
+            
+            if self.framework_name == "crewai" and db_agent.crewai_config:
+                # Use the to_dict method for consistent serialization
+                cache_config.update(db_agent.crewai_config.to_dict())
+            elif self.framework_name == "langchain" and db_agent.langchain_config:
+                # Use the to_dict method for consistent serialization
+                cache_config.update(db_agent.langchain_config.to_dict())
+            elif self.framework_name == "agno" and db_agent.agno_config:
+                # Use the to_dict method for consistent serialization
+                cache_config.update(db_agent.agno_config.to_dict())
+            
+            self.agents[agent_id]["config"] = cache_config
             
             # If agent was running, may need to restart
             was_running = self.agents[agent_id]["status"] == "running"
@@ -313,7 +466,7 @@ class BaseAgentManager:
             
             results = {}
             for agent in db_agents:
-                results[agent.id] = {
+                result = {
                     "id": agent.id,
                     "name": agent.name,
                     "description": agent.description,
@@ -323,19 +476,25 @@ class BaseAgentManager:
                     "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 }
                 
+                # Add framework-specific fields
+                if agent.framework == "crewai" and agent.crewai_config:
+                    # Use the to_dict method for consistent serialization
+                    result.update(agent.crewai_config.to_dict())
+                elif agent.framework == "langchain" and agent.langchain_config:
+                    # Use the to_dict method for consistent serialization
+                    result.update(agent.langchain_config.to_dict())
+                elif agent.framework == "agno" and agent.agno_config:
+                    # Use the to_dict method for consistent serialization
+                    result.update(agent.agno_config.to_dict())
+                    
+                # Use the AgentModel to_dict method
+                results[agent.id] = agent.to_dict()
+                
                 # Ensure runtime cache is in sync
                 if agent.id not in self.agents:
+                    # Use the AgentModel to_dict method for the config
                     self.agents[agent.id] = {
-                        "config": {
-                            "name": agent.name,
-                            "description": agent.description,
-                            "framework": agent.framework,
-                            "role": agent.role,
-                            "backstory": agent.backstory,
-                            "task": agent.task,
-                            "model": agent.model,
-                            "model_config": agent.model_config,
-                        },
+                        "config": agent.to_dict(),
                         "status": agent.status,
                         "instance": None,
                         "results": []
@@ -348,7 +507,24 @@ class BaseAgentManager:
             return {}
         finally:
             db.close()
-
+    
+    def update_agent_status(self, agent_id: int, status: str, error: str = None):
+        """Update agent status in the database."""
+        from backend.database import SessionLocal
+        
+        try:
+            db = SessionLocal()
+            db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+            if db_agent:
+                db_agent.status = status
+                if error:
+                    db_agent.error = error
+                db.commit()
+        except Exception as e:
+            logger.error(f"Error updating agent status: {str(e)}")
+        finally:
+            db.close()
+    
     @property
     def framework_name(self) -> str:
         """Return the name of the framework this manager handles."""

@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     init_db()
     
+    # Load settings from database    
     # Yield to FastAPI
     yield
     

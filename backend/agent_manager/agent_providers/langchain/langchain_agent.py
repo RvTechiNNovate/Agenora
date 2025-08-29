@@ -1,21 +1,19 @@
 """
 LangChain agent manager module.
 """
-from langchain.agents import initialize_agent, AgentType, Tool
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
+from langchain.agents import initialize_agent, AgentType
+
 import os
 import time
+from typing import List
 from typing import Dict, List, Optional, Any, Union
-from concurrent.futures import ThreadPoolExecutor
-from sqlalchemy.orm import Session
-from backend.database import AgentModel, SessionLocal
+
+from backend.database import SessionLocal
+from backend.schemas import FrameworkSchema
+from backend.models import AgentModel
 from backend.utils.logging import get_logger
-from backend.config import config
-from backend.agent_manager.base import BaseAgentManager, running_tasks
+from backend.agent_manager.base import BaseAgentManager
 from backend.llm_providers.manager import llm_provider_manager
-# from langchain_community.callbacks import get_openai_callback
 
 
 # Set up logger
@@ -34,10 +32,48 @@ class LangChainManager(BaseAgentManager):
         """Return the name of the framework this manager handles."""
         return "langchain"
     
+    def get_schema(self) -> Any:
+        """Get the schema for LangChain framework."""
+        
+        return FrameworkSchema(
+            name="LangChain",
+            description="Framework for building applications with LLMs",
+            fields={
+                "agent_type": str,
+                "tools": List[str]
+            }
+        )
+        
+    def validate_agent_config(self, config: Dict[str, Any]) -> Union[bool, str]:
+        """Validate LangChain agent configuration."""
+        # Check required fields
+        required_fields = ["agent_type", "model"]
+        for field in required_fields:
+            if field not in config:
+                logger.error(f"Missing required field: {field}")
+                return f"Missing required field: {field}"
+        
+        # Validate agent_type is one of the allowed values
+        valid_agent_types = ["conversational", "zero-shot-react-description", "react-docstore", "structured-chat"]
+        if config["agent_type"] not in valid_agent_types:
+            logger.error(f"Invalid agent_type: {config['agent_type']}")
+            return f"Invalid agent_type: {config['agent_type']}. Must be one of: {', '.join(valid_agent_types)}"
+            
+        # Validate tools is a list
+        if "tools" in config and not isinstance(config["tools"], list):
+            logger.error("Tools must be a list")
+            return "Tools must be a list"
+            
+        # If we got here, configuration is valid
+        logger.info("LangChain agent configuration validated successfully")
+        return True
+    
     def _cleanup_agent_resources(self, agent_id: int):
         """Clean up LangChain specific resources."""
         if agent_id in self.tools:
             del self.tools[agent_id]
+        # Update status to stopped
+        super().update_agent_status(agent_id, "stopped")
     
     def start_agent(self, agent_id: int) -> bool:
         """Start a LangChain agent by creating its instance and update database."""        
@@ -77,7 +113,7 @@ class LangChainManager(BaseAgentManager):
                 raise ValueError(f"Could not initialize LLM for model {model_name}")
             
             # Set up memory for the agent
-            memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+            # memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
             
             # Create default tools (can be customized based on agent type)
             tools = []
@@ -88,7 +124,7 @@ class LangChainManager(BaseAgentManager):
                 tools=tools,
                 llm=llm,
                 agent=agent_type,
-                memory=memory,
+                # memory=memory,
                 verbose=True,
                 handle_parsing_errors=True
             )
@@ -156,6 +192,7 @@ class LangChainManager(BaseAgentManager):
             
             # Return a user-friendly error message
             return f"Sorry, I encountered an error while processing your request: {str(e)}"
-
+            
+            
 # Singleton instance
 manager = LangChainManager()

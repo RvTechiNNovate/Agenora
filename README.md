@@ -160,7 +160,7 @@ We welcome contributions! 🎉
 ### Core Enhancements
 
 * [x] Agent versioning & snapshots
-* [ ] Side-by-side model comparison
+* [] Side-by-side model comparison
 * [ ] Replay & debugging mode
 
 ### Monitoring & Analytics

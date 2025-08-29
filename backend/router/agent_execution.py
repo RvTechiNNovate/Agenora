@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional
-
-from backend.config import config
-from backend.database import get_db, AgentModel
+from backend.database import get_db
+from backend.models import AgentModel
 from backend.utils.logging import get_logger
 from backend.utils.security import verify_api_key
 from backend.agent_manager import managers
+from backend.schemas import QueryRequest
+
 
 # Set up logging
 logger = get_logger(__name__)
@@ -88,20 +88,6 @@ async def stop_agent(agent_id: int, db: Session = Depends(get_db)):
         detail="Agent not found"
     )
 
-# API Models for query functionality
-from pydantic import BaseModel, Field
-
-class QueryRequest(BaseModel):
-    """Request model for querying an agent."""
-    query: str = Field(..., description="The query text to send to the agent")
-    
-    class Config:
-        """Pydantic model configuration."""
-        schema_extra = {
-            "example": {
-                "query": "What are the latest trends in artificial intelligence?"
-            }
-        }
 
 @router.post("/agent/{agent_id}/query",
          dependencies=[Depends(verify_api_key)],

@@ -1,106 +1,45 @@
 from fastapi import APIRouter, Depends
-from typing import Optional
+from typing import List, Optional
 
 from backend.config import config
 from backend.utils.security import verify_api_key
 from backend.agent_manager import managers
-
+from backend.schemas import FrameworkResponse, FrameworkSchema
+from backend.llm_providers.manager import llm_provider_manager
 # Create router
 router = APIRouter(prefix="/api", tags=["frameworks"])
 
 @router.get("/frameworks/schema",
         summary="Get available frameworks and their schemas",
+        response_model=FrameworkResponse,
         description="Returns the list of supported agent frameworks and their input schemas.")
 async def get_framework_schemas():
     """Get all available frameworks and their schemas."""
-    # Define the fields for each framework
-    frameworks = {
-        "crewai": {
-            "name": "CrewAI",
-            "description": "Multi-agent framework for creating agent teams",
-            "fields": {
-                "role": {
-                    "type": "string",
-                    "description": "Role the agent should take",
-                    "default": "Assistant",
-                    "required": True
-                },
-                "backstory": {
-                    "type": "string",
-                    "description": "Background story for the agent",
-                    "default": "I'm an AI assistant created to help with various tasks.",
-                    "required": True
-                },
-                "task": {
-                    "type": "string",
-                    "description": "Task description for the agent to perform",
-                    "default": "Answer user queries as they come in.",
-                    "required": True
-                }
-            }
-        },
-        "langchain": {
-            "name": "LangChain",
-            "description": "Framework for building applications with LLMs",
-            "fields": {
-                "agent_type": {
-                    "type": "string",
-                    "description": "Type of LangChain agent to create",
-                    "default": "conversational",
-                    "enum": ["conversational", "zero-shot-react-description", "react-docstore", "structured-chat"],
-                    "required": True
-                },
-                "tools": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of tool names to add to the agent",
-                    "default": [],
-                    "required": False
-                }
-            }
-        }
-    }
+    # Fetch framework schemas from agent managers
+    frameworks = {}
     
-    # Define the common fields for all frameworks
+    # Common fields for all frameworks
     common_fields = {
-        "name": {
-            "type": "string",
-            "description": "Name of the agent",
-            "required": True
-        },
-        "description": {
-            "type": "string",
-            "description": "Description of the agent's purpose",
-            "required": True
-        },
-        "framework": {
-            "type": "string",
-            "description": "Agent framework to use",
-            "enum": list(frameworks.keys()),
-            "required": True
-        },
-        "model": {
-            "type": "string",
-            "description": "Language model to use",
-            "default": "gpt-3.5-turbo",
-            "required": True
-        },
-        "model_settings": {
-            "type": "object",
-            "description": "Model configuration settings",
-            "properties": {
-                "temperature": {"type": "number", "minimum": 0, "maximum": 1},
-                "max_tokens": {"type": "integer"},
-                "top_p": {"type": "number"}
-            },
-            "required": False
-        }
+        "name": str,
+        "description": str,
+        "framework": str,
+        "model": str,
+        "model_config": dict
     }
     
-    return {
-        "frameworks": frameworks,
-        "common_fields": common_fields
-    }
+    # Get schema from each manager dynamically
+    for framework_name, manager in managers.items():
+        if hasattr(manager, 'get_schema'):
+            # Use the manager's get_schema method if available
+            schema = manager.get_schema()
+            frameworks[framework_name] = schema
+        else:
+            raise ValueError(f"Manager for {framework_name} does not implement get_schema()")
+
+    return FrameworkResponse(
+        frameworks=frameworks,
+        common_fields=common_fields
+    )
 
 @router.get("/frameworks",
         summary="Get available frameworks",
@@ -116,7 +55,6 @@ async def get_frameworks():
         description="Get a list of all supported LLM providers.")
 async def list_llm_providers():
     """List all supported LLM providers."""
-    from backend.llm_providers.manager import llm_provider_manager
     return {"providers": llm_provider_manager.list_providers()}
 
 @router.get("/llm/models",
@@ -124,5 +62,4 @@ async def list_llm_providers():
         description="Get a list of available models, optionally filtered by provider.")
 async def list_llm_models(provider: Optional[str] = None):
     """List available models for a provider or all providers."""
-    from backend.llm_providers.manager import llm_provider_manager
     return {"models": llm_provider_manager.list_models(provider)}
