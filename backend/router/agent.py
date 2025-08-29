@@ -10,8 +10,7 @@ import time
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
 
-# Import local modules
-from backend.config import config
+
 from backend.database import init_db, get_db, AgentModel
 from backend.utils.logging import get_logger
 from backend.utils.security import verify_api_key
