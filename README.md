@@ -33,15 +33,15 @@ It provides built-in token usage & cost tracking, making it easy to monitor perf
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/agent_dashboard.git
-   cd agent_dashboard
+   git clone https://github.com/RvTechiNNovate/Agenora.git
+   cd Agenora
    ```
 
 2. Create a virtual environment:
 
    ```bash
    python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   source .venv/bin/activate
    ```
 
 3. Install dependencies:
@@ -159,7 +159,7 @@ We welcome contributions! 🎉
 
 ### Core Enhancements
 
-* [ ] Agent versioning & snapshots
+* [x] Agent versioning & snapshots
 * [ ] Side-by-side model comparison
 * [ ] Replay & debugging mode
 
