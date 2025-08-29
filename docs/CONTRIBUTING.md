@@ -1,6 +1,6 @@
-# Contributing to Agent Dashboard
+# Contributing to Agenora
 
-🎉 Thanks for considering contributing to **Agent Dashboard**!  
+🎉 Thanks for considering contributing to **Agenora**!  
 We welcome all kinds of contributions: bug fixes, features, docs, tests, and ideas.
 
 ---
@@ -9,8 +9,8 @@ We welcome all kinds of contributions: bug fixes, features, docs, tests, and ide
 
 ### 1. Fork & Clone
 ```bash
-git clone https://github.com/<your-username>/agent_dashboard.git
-cd agent_dashboard
+[git clone https://github.com/RvTechiNNovate/Agenora.git]
+cd Agenora
 ````
 
 ### 2. Create a Branch
