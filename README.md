@@ -1,5 +1,4 @@
-
-🚀 Agenora
+# 🚀 Agenora
 Agenora is an open-source platform to test, compare, and evaluate AI agents across multiple frameworks (e.g., CrewAI, LangChain) and model providers (e.g., OpenAI, Anthropic, DeepSeek).
 It provides built-in token usage & cost tracking, making it easy to monitor performance and expenses in one place
 
