@@ -181,7 +181,7 @@ async def update_agent(agent_id: int, request: Request, db: Session = Depends(ge
     # Before updating, create a version of the current state
     
     current_version = agent_db.version
-    new_version = AgentVersionModel.from_agent(agent_db, current_version)
+    new_version = AgentVersionModel.from_dict(agent_db, current_version)
     db.add(new_version)
     
     # Use the data dict to pass to manager
@@ -338,7 +338,7 @@ async def restore_agent_version(agent_id: int, version_number: int, db: Session 
         )
     
     # Create a new version based on current state before restoring
-    current_version = AgentVersionModel.from_agent(agent, agent.version)
+    current_version = AgentVersionModel.from_dict(agent, agent.version)
     db.add(current_version)
     
     # Restore the agent to the specified version

@@ -5,7 +5,7 @@ from backend.models import AgentModel
 from backend.utils.logging import get_logger
 from backend.utils.security import verify_api_key
 from backend.agent_manager import managers
-from backend.schemas import QueryRequest
+from backend.schemas import QueryRequest, QueryResponse
 
 
 # Set up logging
@@ -91,6 +91,7 @@ async def stop_agent(agent_id: int, db: Session = Depends(get_db)):
 
 @router.post("/agent/{agent_id}/query",
          dependencies=[Depends(verify_api_key)],
+         response_model=QueryResponse,
          summary="Query an agent",
          description="Send a query to a running agent and get a response.")
 async def query_agent(agent_id: int, query_req: QueryRequest, request: Request, db: Session = Depends(get_db)):
@@ -118,7 +119,7 @@ async def query_agent(agent_id: int, query_req: QueryRequest, request: Request, 
     if framework in managers:
         manager = managers[framework]
     else:
-        logger.warning(f"Framework {framework} not supported, using default manager")
+        logger.warning(f"Framework {framework} not supported")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Framework {framework} not supported. Try creating agent using available frameworks."

@@ -4,7 +4,17 @@ Uses SQLAlchemy for ORM and database interaction.
 
 This file contains all models to avoid circular import issues.
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, JSON, DateTime, ForeignKey, Text
+from sqlalchemy import (
+    Column, 
+    Integer,
+    String,
+    Float,
+    Boolean,
+    JSON,
+    DateTime,
+    ForeignKey,
+    Text
+)
 from sqlalchemy.orm import relationship
 import datetime
 from backend.database import Base
@@ -12,13 +22,13 @@ from backend.database import Base
 class AgentModel(Base):
     """Base agent model with common fields."""
     __tablename__ = "agents"
-    __table_args__ = {'extend_existing': True}
+    # __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
-    description = Column(Text)
-    framework = Column(String)  # crewai, langchain, etc.
-    model = Column(String)
+    description = Column(Text, nullable=False)
+    framework = Column(String, nullable=False)  # crewai, langchain, etc.
+    model = Column(String, nullable=False)
     model_config = Column(JSON, default={})
     status = Column(String, default="stopped")
     error = Column(String, nullable=True)
@@ -98,7 +108,7 @@ class AgentModel(Base):
 class CrewAIAgentModel(Base):
     """CrewAI specific agent configuration."""
     __tablename__ = "crewai_agents"
-    __table_args__ = {'extend_existing': True}
+    # __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(Integer, ForeignKey("agents.id"), unique=True)
@@ -132,19 +142,19 @@ class CrewAIAgentModel(Base):
         """Create an instance from a dictionary."""
         return cls(
             agent_id=agent_id,
-            role=data.get("role", "Assistant"),
+            role=data.get("role"),
             backstory=data.get("backstory"),
             task=data.get("task"),
             goals=data.get("goals", []),
             tools=data.get("tools", []),
-            memory_enabled=data.get("memory_enabled", True),
+            memory_enabled=data.get("memory_enabled", False),
             expected_output=data.get("expected_output")
         )
 
 class LangChainAgentModel(Base):
     """LangChain specific agent configuration."""
     __tablename__ = "langchain_agents"
-    __table_args__ = {'extend_existing': True}
+    # __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(Integer, ForeignKey("agents.id"), unique=True)
@@ -184,14 +194,14 @@ class LangChainAgentModel(Base):
 class AgnoAgentModel(Base):
     """Agno specific agent configuration."""
     __tablename__ = "agno_agents"
-    __table_args__ = {'extend_existing': True}
+    # __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(Integer, ForeignKey("agents.id"), unique=True)
     tools = Column(JSON, default=lambda: [])
     instructions = Column(JSON, default=lambda: [])
     markdown = Column(Boolean, default=True)
-    stream = Column(Boolean, default=True)
+    stream = Column(Boolean, default=False)
     
     # Relationship back to main agent
     agent = relationship("AgentModel", back_populates="agno_config")
@@ -215,21 +225,21 @@ class AgnoAgentModel(Base):
             tools=data.get("tools", []),
             instructions=data.get("instructions", []),
             markdown=data.get("markdown", True),
-            stream=data.get("stream", True)
+            stream=data.get("stream", False)
         )
 
 class AgentVersionModel(Base):
     """Model to store agent versions for versioning history."""
     __tablename__ = "agent_versions"
-    __table_args__ = {'extend_existing': True}
+    # __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False)
     version_number = Column(Integer, nullable=False)
     name = Column(String, nullable=False)
-    description = Column(Text)
-    framework = Column(String)
-    model = Column(String)
+    description = Column(Text, nullable=False)
+    framework = Column(String, nullable=False)
+    model = Column(String, nullable=False)
     model_config = Column(JSON, default={})
     framework_config = Column(JSON, default={})  # Store framework-specific config as JSON
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -258,7 +268,7 @@ class AgentVersionModel(Base):
         return version_dict
     
     @classmethod
-    def from_agent(cls, agent, version_number):
+    def from_dict(cls, agent, version_number):
         """Create a version from an agent instance."""
         # Start with base fields
         version = cls(
@@ -303,7 +313,7 @@ class AgentVersionModel(Base):
 class SettingModel(Base):
     """Model for storing application settings."""
     __tablename__ = "settings"
-    __table_args__ = {'extend_existing': True}
+    # __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True, index=True)
     category = Column(String, nullable=False)  # e.g., "llm_provider", "agent", etc.
