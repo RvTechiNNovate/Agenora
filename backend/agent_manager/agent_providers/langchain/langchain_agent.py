@@ -7,13 +7,14 @@ import os
 import time
 from typing import List
 from typing import Dict, List, Optional, Any, Union
-
+from sqlalchemy.orm import Session
 from backend.database import SessionLocal
 from backend.schemas import FrameworkSchema
-from backend.models import AgentModel
+from backend.models import AgentModel, LangChainAgentModel
 from backend.utils.logging import get_logger
 from backend.agent_manager.base import BaseAgentManager
 from backend.llm_providers.manager import llm_provider_manager
+from backend.agent_manager.agent_providers.langchain.config import LangChainConfig
 
 
 # Set up logger
@@ -74,6 +75,65 @@ class LangChainManager(BaseAgentManager):
             del self.tools[agent_id]
         # Update status to stopped
         super().update_agent_status(agent_id, "stopped")
+        
+    def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
+        """
+        Create framework-specific configuration for the agent.
+        
+        Args:
+            db: Database session
+            db_agent: Agent model instance
+            config: Agent configuration
+        """
+        # Create config object for better validation and defaults
+        langchain_config_obj = LangChainConfig.from_dict(config)
+        
+        # Create database model from config object
+        langchain_model = LangChainAgentModel.from_dict(langchain_config_obj.to_dict(), db_agent.id)
+        db.add(langchain_model)
+        
+    def _get_framework_config(self, agent: AgentModel) -> Dict[str, Any]:
+        """
+        Get framework-specific configuration for the agent.
+        
+        Args:
+            agent: Agent model instance
+            
+        Returns:
+            Dictionary containing framework-specific configuration
+        """
+        if agent.langchain_config:
+            return agent.langchain_config.to_dict()
+        return {}
+
+    def _update_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
+        """
+        Update framework-specific configuration for the agent.
+        
+        Args:
+            db: Database session
+            db_agent: Agent model instance
+            config: Updated agent configuration
+        """
+        # Ensure the framework-specific config exists
+        if not db_agent.langchain_config:
+            error_msg = f"Agent {db_agent.id} does not have LangChain configuration"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Get current config values
+        current_config = db_agent.langchain_config.to_dict()
+        
+        # Merge with new config values
+        merged_config = {**current_config, **config}
+        langchain_config_obj = LangChainConfig.from_dict(merged_config)
+        
+        # Update fields individually to preserve the existing record
+        db_agent.langchain_config.agent_type = langchain_config_obj.agent_type
+        db_agent.langchain_config.tools = langchain_config_obj.tools
+        db_agent.langchain_config.memory_type = langchain_config_obj.memory_type
+        db_agent.langchain_config.verbose = langchain_config_obj.verbose
+        db_agent.langchain_config.chain_type = langchain_config_obj.chain_type
     
     def start_agent(self, agent_id: int) -> bool:
         """Start a LangChain agent by creating its instance and update database."""        

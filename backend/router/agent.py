@@ -1,5 +1,6 @@
 from fastapi import  Request, Depends, HTTPException, status
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from backend.schemas import AgentCreateResponse
@@ -19,7 +20,8 @@ router = APIRouter(prefix="/api", tags=["agents"])
          response_model=AgentCreateResponse,
          dependencies=[Depends(verify_api_key)],
          summary="Create a new agent",
-         description="Create a new agent with the specified configuration.")
+         description="Create a new agent with the specified configuration.",
+         status_code=status.HTTP_201_CREATED)
 async def create_agent(request: Request):
     """Create a new agent with the given configuration."""
     # Parse request body
@@ -77,14 +79,14 @@ async def create_agent(request: Request):
         return {
             "agent_id": agent_id, 
             "agent": {
-                "id": agent_id,
-                "name": task_dict["name"],
-                "description": task_dict["description"],
-                "framework": task_dict["framework"],
-                "status": "stopped",
-                "model": task_dict["model"]
+                    "id": agent_id,
+                    "name": task_dict["name"],
+                    "description": task_dict["description"],
+                    "framework": task_dict["framework"],
+                    "status": "stopped",
+                    "model": task_dict["model"]
+                }
             }
-        }
     except Exception as e:
         logger.error(f"Error creating agent: {str(e)}")
         raise HTTPException(
@@ -95,7 +97,8 @@ async def create_agent(request: Request):
 @router.get("/agents", 
         dependencies=[Depends(verify_api_key)],
         summary="List all agents",
-        description="Get a list of all created agents with their status.")
+        description="Get a list of all created agents with their status.",
+        status_code=status.HTTP_200_OK)
 async def list_agents():
     """List all agents in the system."""
     # Combine agents from all managers
@@ -105,11 +108,11 @@ async def list_agents():
         all_agents.update(framework_agents)
     
     return all_agents
-
 @router.get("/agent/{agent_id}", 
         dependencies=[Depends(verify_api_key)],
         summary="Get agent details",
-        description="Get detailed information about a specific agent.")
+        description="Get detailed information about a specific agent.",
+        status_code=status.HTTP_200_OK)
 async def get_agent(agent_id: int, db: Session = Depends(get_db)):
     """Get detailed information about a specific agent."""
     
@@ -120,7 +123,6 @@ async def get_agent(agent_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent with ID {agent_id} not found"
         )
-    
     return agent.to_dict()
 
 @router.put("/agent/{agent_id}",

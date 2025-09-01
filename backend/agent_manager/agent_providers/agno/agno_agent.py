@@ -2,6 +2,7 @@
 Agno agent manager module.
 """
 from typing import Dict, Any, Optional, List, Union
+from sqlalchemy.orm import Session
 from backend.agent_manager.base import BaseAgentManager
 from backend.database import SessionLocal
 from backend.models import AgentModel, AgnoAgentModel
@@ -162,6 +163,63 @@ class AgnoManager(BaseAgentManager):
             self.agents[agent_id]["instance"] = None
             # Update status to stopped
             super().update_agent_status(agent_id, "stopped")
-            
-
     
+    def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
+        """
+        Create framework-specific configuration for the agent.
+        
+        Args:
+            db: Database session
+            db_agent: Agent model instance
+            config: Agent configuration
+        """
+        # Create config object for better validation and defaults
+        agno_config_obj = AgnoConfig.from_dict(config)
+        
+        # Create database model from config object
+        agno_model = AgnoAgentModel.from_dict(agno_config_obj.to_dict(), db_agent.id)
+        db.add(agno_model)
+    
+    def _get_framework_config(self, agent: AgentModel) -> Dict[str, Any]:
+        """
+        Get framework-specific configuration for the agent.
+        
+        Args:
+            agent: Agent model instance
+            
+        Returns:
+            Dictionary containing framework-specific configuration
+        """
+        if agent.agno_config:
+            return agent.agno_config.to_dict()
+        return {}
+    
+    def _update_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
+        """
+        Update framework-specific configuration for the agent.
+        
+        Args:
+            db: Database session
+            db_agent: Agent model instance
+            config: Updated agent configuration
+        """
+        # Ensure the framework-specific config exists
+        if not db_agent.agno_config:
+            error_msg = f"Agent {db_agent.id} does not have Agno configuration"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Get current config values
+        current_config = db_agent.agno_config.to_dict()
+        
+        # Merge with new config values
+        merged_config = {**current_config, **config}
+        agno_config_obj = AgnoConfig.from_dict(merged_config)
+        
+        # Update fields individually to preserve the existing record
+        db_agent.agno_config.tools = agno_config_obj.tools
+        db_agent.agno_config.instructions = agno_config_obj.instructions
+        db_agent.agno_config.markdown = agno_config_obj.markdown
+        db_agent.agno_config.stream = agno_config_obj.stream
+    
+manager = AgnoManager()

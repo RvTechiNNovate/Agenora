@@ -2,11 +2,13 @@ from crewai import Agent, Task, Crew
 import os
 import time
 from typing import Dict, List, Optional, Any, Union
+from sqlalchemy.orm import Session
 from backend.database import SessionLocal
 from backend.models import AgentModel, CrewAIAgentModel
 from backend.utils.logging import get_logger
 from backend.config import config
 from backend.agent_manager.base import BaseAgentManager, running_tasks
+from backend.agent_manager.agent_providers.crewai.config import CrewAIConfig
 from backend.llm_providers.manager import llm_provider_manager
 
 # Set up logger
@@ -44,6 +46,67 @@ class CrewAIManager(BaseAgentManager):
             del self.crews[agent_id]
         # Update status to stopped
         super().update_agent_status(agent_id, "stopped")
+        
+    def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
+        """
+        Create framework-specific configuration for the agent.
+        
+        Args:
+            db: Database session
+            db_agent: Agent model instance
+            config: Agent configuration
+        """
+        # Create config object for better validation and defaults
+        crewai_config_obj = CrewAIConfig.from_dict(config)
+        
+        # Create database model from config object
+        crewai_model = CrewAIAgentModel.from_dict(crewai_config_obj.to_dict(), db_agent.id)
+        db.add(crewai_model)
+        
+    def _get_framework_config(self, agent: AgentModel) -> Dict[str, Any]:
+        """
+        Get framework-specific configuration for the agent.
+        
+        Args:
+            agent: Agent model instance
+            
+        Returns:
+            Dictionary containing framework-specific configuration
+        """
+        if agent.crewai_config:
+            return agent.crewai_config.to_dict()
+        return {}
+        
+    def _update_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
+        """
+        Update framework-specific configuration for the agent.
+        
+        Args:
+            db: Database session
+            db_agent: Agent model instance
+            config: Updated agent configuration
+        """
+        # Ensure the framework-specific config exists
+        if not db_agent.crewai_config:
+            error_msg = f"Agent {db_agent.id} does not have CrewAI configuration"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Get current config values
+        current_config = db_agent.crewai_config.to_dict()
+        
+        # Merge with new config values
+        merged_config = {**current_config, **config}
+        crewai_config_obj = CrewAIConfig.from_dict(merged_config)
+        
+        # Update fields individually to preserve the existing record
+        db_agent.crewai_config.role = crewai_config_obj.role
+        db_agent.crewai_config.backstory = crewai_config_obj.backstory
+        db_agent.crewai_config.task = crewai_config_obj.task
+        db_agent.crewai_config.goals = crewai_config_obj.goals
+        db_agent.crewai_config.tools = crewai_config_obj.tools
+        db_agent.crewai_config.memory_enabled = crewai_config_obj.memory_enabled
+        db_agent.crewai_config.expected_output = crewai_config_obj.expected_output
     
     def start_agent(self, agent_id: int) -> bool:
         """Start an agent by creating its CrewAI instance and update database."""        

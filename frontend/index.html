@@ -7,7 +7,22 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/scripts/framework-fields.css">
-    <script src="/static/scripts/framework-fields.js" defer></script>
+    <script src="/static/scripts/framework-fields.js"></script>
+    <!-- Add a script to check LangGraph fields on load -->
+    <script>
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('Window DOMContentLoaded event');
+            setTimeout(function() {
+                const langgraphFields = document.getElementById('langgraph-fields');
+                console.log('LangGraph fields check:', langgraphFields ? 'Found' : 'Not found');
+                
+                const framework = document.getElementById('framework');
+                if (framework) {
+                    console.log('Current framework selected:', framework.value);
+                }
+            }, 1000);
+        });
+    </script>
 </head>
 <body>
     <!-- <button id="mobile-menu-toggle" class="mobile-menu-toggle">
@@ -181,11 +196,13 @@
                                 <option value="crewai">CrewAI</option>
                                 <option value="langchain">LangChain</option>
                                 <option value="agno">Agno</option>
+                                <option value="langgraph">LangGraph</option>
                             </select>
                             <div class="framework-description">
                                 <span id="crewai-description">CrewAI: A framework for creating multiple agents that work together as a team.</span>
                                 <span id="langchain-description" style="display: none;">LangChain: A framework for building applications with LLMs through composable components.</span>
                                 <span id="agno-description" style="display: none;">Agno: A lightweight framework for creating agents with a focus on simplicity and versatility.</span>
+                                <span id="langgraph-description" style="display: none;">LangGraph: A library for building stateful, multi-actor applications with LLMs using graphs.</span>
                             </div>
                         </div>
 
@@ -260,6 +277,19 @@
                             <div class="form-group checkbox-group">
                                 <input type="checkbox" id="stream" checked>
                                 <label for="stream">Stream Response</label>
+                            </div>
+                        </div>
+                        
+                        <!-- LangGraph specific fields -->
+                        <div id="langgraph-fields" style="display: none;">
+                            <div class="form-group">
+                                <label for="langgraph_tools">Tools (comma separated):</label>
+                                <input type="text" id="langgraph_tools" placeholder="e.g., search,calculator,weather">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="langgraph_prompt">Prompt Template:</label>
+                                <textarea id="langgraph_prompt" rows="4" placeholder="Enter your prompt template for the ReAct agent..." required>You are a helpful AI assistant capable of solving complex tasks using a combination of reasoning and tools.</textarea>
                             </div>
                         </div>
                         

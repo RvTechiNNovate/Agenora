@@ -27,7 +27,7 @@ class AgentModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
     description = Column(Text, nullable=False)
-    framework = Column(String, nullable=False)  # crewai, langchain, etc.
+    framework = Column(String, nullable=False) 
     model = Column(String, nullable=False)
     model_config = Column(JSON, default={})
     status = Column(String, default="stopped")
@@ -40,7 +40,7 @@ class AgentModel(Base):
     crewai_config = relationship("CrewAIAgentModel", back_populates="agent", uselist=False, cascade="all, delete-orphan")
     langchain_config = relationship("LangChainAgentModel", back_populates="agent", uselist=False, cascade="all, delete-orphan")
     agno_config = relationship("AgnoAgentModel", back_populates="agent", uselist=False, cascade="all, delete-orphan")
-    
+    langgraph_config = relationship("LanggraphAgentModel", back_populates="agent", uselist=False, cascade="all, delete-orphan")
     # Relationship with versions
     versions = relationship("AgentVersionModel", back_populates="agent", cascade="all, delete-orphan")
     
@@ -86,7 +86,12 @@ class AgentModel(Base):
                 "markdown": self.agno_config.markdown,
                 "stream": self.agno_config.stream
             })
-            
+        elif self.framework == "langgraph" and self.langgraph_config:
+            result.update({
+                "tools": self.langgraph_config.tools,
+                "prompt": self.langgraph_config.prompt
+            })
+
         return result
         
     @classmethod
@@ -226,6 +231,36 @@ class AgnoAgentModel(Base):
             instructions=data.get("instructions", []),
             markdown=data.get("markdown", True),
             stream=data.get("stream", False)
+        )
+
+class LanggraphAgentModel(Base):
+    """Langgraph specific agent configuration."""
+    __tablename__ = "langgraph_agents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), unique=True)
+    tools = Column(JSON, default=lambda: [])
+    prompt = Column(JSON, default=lambda: [])
+    
+    # Relationship back to main agent
+    agent = relationship("AgentModel", back_populates="langgraph_config")
+
+    def to_dict(self):
+        """Convert the model to a dictionary."""
+        return {
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "tools": self.tools,
+            "prompt": self.prompt
+        }
+
+    @classmethod
+    def from_dict(cls, data, agent_id):
+        """Create an instance from a dictionary."""
+        return cls(
+            agent_id=agent_id,
+            tools=data.get("tools", []),
+            prompt=data.get("prompt", [])
         )
 
 class AgentVersionModel(Base):

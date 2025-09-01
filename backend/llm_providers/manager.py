@@ -69,7 +69,7 @@ class LLMProviderManager:
             **kwargs: Additional provider-specific parameters
             
         Returns:
-            An LLM instance compatible with LangChain/CrewAI or None if provider not available
+            An LLM instance compatible with multiple agents or None if provider not available
         """
         # Parse model string if it includes provider info (e.g., "openai:gpt-4")
         if model and ":" in model and not provider_name:

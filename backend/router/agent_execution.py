@@ -35,7 +35,7 @@ async def start_agent(agent_id: int, db: Session = Depends(get_db)):
     if framework in managers:
         manager = managers[framework]
     else:
-        logger.warning(f"Framework {framework} not supported, using default manager")
+        logger.warning(f"Framework {framework} not supported.")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Framework {framework} not supported. Try creating agent using available frameworks."

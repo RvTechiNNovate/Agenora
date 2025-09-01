@@ -7,6 +7,7 @@ from backend.agent_manager.base import BaseAgentManager
 from backend.agent_manager.agent_providers.crewai.crewai_agent import CrewAIManager
 from backend.agent_manager.agent_providers.langchain.langchain_agent import LangChainManager
 from backend.agent_manager.agent_providers.agno.agno_agent import AgnoManager
+from backend.agent_manager.agent_providers.langgraph.langgraph_agent import LanggraphManager
 logger = get_logger(__name__)
 
 class AgentManagerFactory:
@@ -15,7 +16,8 @@ class AgentManagerFactory:
     _registered_managers: Dict[str, Type[BaseAgentManager]] = {
         "crewai": CrewAIManager,
         "langchain": LangChainManager,
-        "agno": AgnoManager
+        "agno": AgnoManager,
+        "langgraph": LanggraphManager
     }
     
     @classmethod

@@ -19,7 +19,7 @@ class BaseLLMProvider(ABC):
             **kwargs: Additional provider-specific parameters
             
         Returns:
-            An LLM instance compatible with LangChain/CrewAI
+            An LLM instance compatible with multiple agents
         """
         pass
         

@@ -15,18 +15,19 @@ from backend.config import config
 from backend.database import init_db
 from backend.utils.logging import get_logger
 from backend.utils.security import verify_api_key
-from backend.router.agent import router as agent_router
-from backend.router.agent_execution import router as agent_execution_router
-from backend.router.framework import router as framework_router
-from backend.router.system import router as system_router
-from backend.router.settings import router as settings_router
-
+from backend.router import (
+    agent_router,
+    agent_execution_router,
+    framework_router,
+    settings_router,
+    system_router
+)
 
 
 # Set up logging
 logger = get_logger(__name__)
 
-# Initialize database before app starts
+# Initialize database and resources before app starts
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -37,7 +38,10 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     init_db()
     
-    # Load settings from database    
+    # Log available agent providers
+    from backend.agent_manager import managers
+    logger.info(f"Available agent providers: {', '.join(managers.keys())}")
+    
     # Yield to FastAPI
     yield
     
@@ -47,7 +51,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Agent Dashboard API",
-    description="API for creating and managing AI agents with CrewAI",
+    description="API for creating and managing AI agents",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/api/docs" if not config.server.is_production else None,

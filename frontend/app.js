@@ -677,28 +677,55 @@ async function handleFormSubmit(event) {
     try {
         // Get selected framework
         const framework = document.getElementById('framework').value;
+        console.log('Selected framework:', framework);
+        
+        // Debug LangGraph fields if selected
+        if (framework === 'langgraph') {
+            const promptField = document.getElementById('langgraph_prompt');
+            console.log('LangGraph prompt field value at submission:', promptField ? promptField.value : 'not found');
+        }
         
         // Get form data based on selected framework
         const formData = collectFrameworkSpecificFormData(framework);
         
+        // Ensure LangGraph required fields are included
+        if (framework === 'langgraph') {
+            if (!formData.prompt) {
+                formData.prompt = document.getElementById('langgraph_prompt')?.value || 'Default ReAct agent prompt';
+            }
+            if (!formData.tools) {
+                const toolsInput = document.getElementById('langgraph_tools')?.value || '';
+                formData.tools = toolsInput ? toolsInput.split(',').map(tool => tool.trim()) : [];
+            }
+        }
+        
+        // Log the form data for debugging
+        console.log('Form data being sent:', JSON.stringify(formData));
+        
         let response;
         
         if (mode === 'create') {
+            const payload = JSON.stringify(formData);
+            console.log('Final JSON payload:', payload);
+            
             response = await fetch('/api/agent', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(formData)
+                body: payload
             });
         } else if (mode === 'edit') {
             const agentId = form.getAttribute('data-agent-id');
+            const payload = JSON.stringify(formData);
+            console.log('Final JSON payload for edit:', payload);
+            
             response = await fetch(`/api/agent/${agentId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(formData)
+                body: payload
             });
         }
         
