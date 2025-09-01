@@ -425,6 +425,7 @@ class BaseAgentManager:
                 if error:
                     db_agent.error = error
                 db.commit()
+                logger.info(f"Updated agent {agent_id} status to {status}")
         except Exception as e:
             logger.error(f"Error updating agent status: {str(e)}")
         finally:

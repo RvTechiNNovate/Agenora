@@ -7,6 +7,7 @@ from backend.database import SessionLocal
 from backend.models import AgentModel, CrewAIAgentModel
 from backend.utils.logging import get_logger
 from backend.config import config
+from backend.schemas import FrameworkSchema
 from backend.agent_manager.base import BaseAgentManager, running_tasks
 from backend.agent_manager.agent_providers.crewai.config import CrewAIConfig
 from backend.llm_providers.manager import llm_provider_manager
@@ -26,8 +27,6 @@ class CrewAIManager(BaseAgentManager):
     
     def get_schema(self) -> Any:
         """Get the schema for CrewAI framework."""
-        from backend.schemas import FrameworkSchema
-        from typing import List
         
         return FrameworkSchema(
             name="CrewAI",
@@ -173,18 +172,8 @@ class CrewAIManager(BaseAgentManager):
             self.crews[agent_id] = crew
             self.agents[agent_id]["status"] = "running"
             
-            # Update database
-            db = SessionLocal()
-            try:
-                db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-                if db_agent:
-                    db_agent.status = "running"
-                    db_agent.error = None
-                    db.commit()
-                    logger.info(f"Agent {agent_id} started successfully")
-            finally:
-                db.close()
-                
+            super().update_agent_status(agent_id, "running")
+           
             return True
         
         except Exception as e:
@@ -194,15 +183,7 @@ class CrewAIManager(BaseAgentManager):
             # Update memory cache
             self.agents[agent_id]["error"] = str(e)
             
-            # Update database
-            db = SessionLocal()
-            try:
-                db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-                if db_agent:
-                    db_agent.error = str(e)
-                    db.commit()
-            finally:
-                db.close()
+            super().update_agent_status(agent_id, "error", error=str(e))
                 
             return False
         
