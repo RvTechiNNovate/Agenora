@@ -1,8 +1,8 @@
 import uvicorn
 import os
 import logging
-from backend.config import config
-from backend.database import init_db
+from backend.core.config import config
+from backend.db.session import init_db
 
 if __name__ == "__main__":
     # Ensure logs directory exists
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     # In development mode, use simpler logging config
     if is_dev:
         uvicorn.run(
-            "backend.main:app", 
+            "backend.api.app:app", 
             host=config.server.host, 
             port=config.server.port, 
             reload=True,
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     else:
         # In production, use the full logging config
         uvicorn.run(
-            "backend.main:app", 
+            "backend.api.app:app", 
             host=config.server.host, 
             port=config.server.port, 
             reload=False,

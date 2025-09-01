@@ -2,12 +2,12 @@
 Agent manager factory module.
 """
 from typing import Dict, Type, Optional, List
-from backend.utils.logging import get_logger
-from backend.agent_manager.base import BaseAgentManager
-from backend.agent_manager.agent_providers.crewai.crewai_agent import CrewAIManager
-from backend.agent_manager.agent_providers.langchain.langchain_agent import LangChainManager
-from backend.agent_manager.agent_providers.agno.agno_agent import AgnoManager
-from backend.agent_manager.agent_providers.langgraph.langgraph_agent import LanggraphManager
+from backend.core.logging import get_logger
+from .base import BaseAgentManager
+from .providers.agno.agno_agent import AgnoManager
+from .providers.crewai.crewai_agent import CrewAIManager
+from .providers.langchain.langchain_agent import LangChainManager
+from .providers.langgraph.langgraph_agent import LanggraphManager
 logger = get_logger(__name__)
 
 class AgentManagerFactory:

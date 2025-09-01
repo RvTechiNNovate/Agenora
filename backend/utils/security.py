@@ -3,7 +3,7 @@ Security utilities for the agent dashboard.
 """
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
-from backend.config import config
+from backend.core.config import config
 
 # API key security
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

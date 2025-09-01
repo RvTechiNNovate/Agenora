@@ -2,7 +2,7 @@
 Agent provider manager module.
 """
 from typing import Dict, List, Any, Optional
-from backend.utils.logging import get_logger
+from backend.core.logging import get_logger
 from backend.agent_manager.base import BaseAgentManager
 from backend.agent_manager.factory import AgentManagerFactory
 

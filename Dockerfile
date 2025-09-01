@@ -37,4 +37,4 @@ RUN chown -R app:app /app
 USER app
 
 # Run the application with Gunicorn for production
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "300", "backend.main:app"]
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "300", "backend.api.app:app"]

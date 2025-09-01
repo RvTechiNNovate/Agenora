@@ -6,10 +6,10 @@ from typing import Dict, List, Optional, Any, Union
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.orm import Session
-from backend.database import get_db, SessionLocal
-from backend.models import AgentModel
-from backend.config import config
-from backend.utils.logging import get_logger
+from backend.db.session import get_db, SessionLocal
+from backend.db.models import AgentModel
+from backend.core.config import config
+from backend.core.logging import get_logger
 
 # Set up logger
 logger = get_logger(__name__)
@@ -415,7 +415,7 @@ class BaseAgentManager:
     
     def update_agent_status(self, agent_id: int, status: str, error: str = None):
         """Update agent status in the database."""
-        from backend.database import SessionLocal
+        from backend.db.session import SessionLocal
         
         try:
             db = SessionLocal()
