@@ -1,0 +1,37 @@
+<!-- This is a placeholder for the actual architecture diagram -->
+<!-- In a real project, you would create a proper diagram using tools like draw.io, Lucidchart, etc. -->
+
+<!--
++---------------------------+
+|      Frontend (React)     |
++---------------------------+
+            |
+            v
++---------------------------+
+|    API Layer (FastAPI)    |
++---------------------------+
+            |
+            v
++---------------------------+
+|     Agent Manager         |
+|                           |
+|  +---------------------+  |
+|  |  BaseAgentManager   |  |
+|  +---------------------+  |
+|           |              |
+|           v              |
+|  +---------------------+  |
+|  |Framework Providers  |  |
+|  |                     |  |
+|  | - CrewAI            |  |
+|  | - LangChain         |  |
+|  | - Agno              |  |
+|  | - LangGraph         |  |
+|  +---------------------+  |
++---------------------------+
+            |
+            v
++---------------------------+
+|    Database (SQLAlchemy)  |
++---------------------------+
+-->

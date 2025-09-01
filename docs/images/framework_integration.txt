@@ -1,0 +1,26 @@
+<!-- This is a placeholder for the actual framework integration diagram -->
+<!-- In a real project, you would create a proper diagram using tools like draw.io, Lucidchart, etc. -->
+
+<!--
++-----------------------------------+
+|          BaseAgentManager         |
+|                                   |
+| + framework_name                  |
+| + get_schema()                    |
+| + validate_agent_config()         |
+| + start_agent()                   |
+| + _run_query()                    |
+| + _cleanup_agent_resources()      |
+| + _create_framework_config()      |
+| + _get_framework_config()         |
+| + _update_framework_config()      |
++-----------------------------------+
+                 ^
+                 |
+     +-----------+-----------+
+     |           |           |
++----------+ +----------+ +----------+
+| CrewAI   | | LangChain| |  Agno    |
+| Manager  | | Manager  | | Manager  |
++----------+ +----------+ +----------+
+-->

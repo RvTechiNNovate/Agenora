@@ -1,0 +1,15 @@
+<!-- This is a placeholder for the actual image file. In a real project, you would use an actual PNG or SVG file here -->
+<!-- The following is ASCII art representation of what the header image might look like -->
+
+<!--
+                    
+     _                                   
+    / \   __ _  ___ _ __   ___  _ __ ___ 
+   / _ \ / _` |/ _ \ '_ \ / _ \| '__/ __|
+  / ___ \ (_| |  __/ | | | (_) | |  \__ \
+ /_/   \_\__, |\___|_| |_|\___/|_|  |___/
+         |___/                           
+           
+   The Open-Source Platform for AI Agent Orchestration
+                                                     
+-->

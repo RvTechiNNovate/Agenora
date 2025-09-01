@@ -1,6 +1,12 @@
 # Agent Framework Integration Guide
 
-This document provides detailed instructions for integrating a new agent framework into the dashboard.
+<div align="center">
+  
+![Agenora Framework Integration](images/framework_integration.png)
+
+</div>
+
+This document provides detailed instructions for integrating a new agent framework into Agenora.
 
 ## Architecture Overview
 
