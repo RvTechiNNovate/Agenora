@@ -42,8 +42,6 @@ class CrewAIManager(BaseAgentManager):
         """Clean up CrewAI specific resources."""
         if agent_id in self.crews:
             del self.crews[agent_id]
-        # Update status to stopped
-        super().update_agent_status(agent_id, "stopped")
         
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """

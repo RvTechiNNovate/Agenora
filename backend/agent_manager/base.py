@@ -69,7 +69,7 @@ class BaseAgentManager:
         """
         # Default implementation returns an empty dict - subclasses should override this
         return {}
-        
+
     def _update_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
         Update framework-specific configuration for the agent.
@@ -82,40 +82,56 @@ class BaseAgentManager:
         """
         # Default implementation does nothing - subclasses should override this
         pass
-    
+            
     def _load_agents_from_db(self):
         """Load existing agents from the database into memory."""
+        db = SessionLocal()
         try:
-            db_agents = db_repository.agents.get_agents_by_framework(self.framework_name)
+            # Get agents for this framework with an active database session
+            db_agents = db.query(AgentModel).filter(AgentModel.framework == self.framework_name).all()
             
             for agent in db_agents:
-                # Create base config with common fields
-                config = {
-                    "name": agent.name,
-                    "description": agent.description,
-                    "framework": agent.framework,
-                    "model": agent.model,
-                    "model_config": agent.model_config,
-                }
-                
-                # Let subclasses add framework-specific configuration
-                framework_config = self._get_framework_config(agent)
-                if framework_config:
-                    config.update(framework_config)
+                try:
+                    
+                    # Create base config with common fields
+                    config = {
+                        "name": agent.name,
+                        "description": agent.description,
+                        "framework": agent.framework,
+                        "model": agent.model,
+                        "model_config": agent.model_config,
+                    }
+                    
+                    # Let subclasses add framework-specific configuration
+                    framework_config = self._get_framework_config(agent)
+                    if framework_config:
+                        config.update(framework_config)
 
-                self.agents[agent.id] = {
-                    "config": config,
-                    "status": agent.status,
-                    "instance": None,
-                    "results": [],
-                    "error": agent.error
-                }
+                    self.agents[agent.id] = {
+                        "config": config,
+                        "status": agent.status,
+                        "instance": None,
+                        "results": [],
+                        "error": agent.error
+                    }
+                except Exception as e:
+                    logger.error(f"Error loading agent {agent.id}: {str(e)}")
+                    # Still add the agent to the cache, but mark it with the error
+                    self.agents[agent.id] = {
+                        "config": {"name": agent.name, "framework": agent.framework},
+                        "status": "error",
+                        "instance": None,
+                        "results": [],
+                        "error": str(e)
+                    }
             
             logger.info(f"Loaded {len(db_agents)} {self.framework_name} agents from database")
             
         except Exception as e:
             logger.error(f"Error loading {self.framework_name} agents from database: {str(e)}")
-    
+        finally:
+            db.close()
+            
     def create_agent(self, config: Dict[str, Any]) -> int:
         """Create a new agent with the given configuration and store in database."""
         try:
@@ -285,9 +301,7 @@ class BaseAgentManager:
                 self._cleanup_agent_resources(agent_id)
                 if agent_id in self.agents:
                     del self.agents[agent_id]
-                
-                logger.info(f"Agent {agent_id} deleted successfully")
-            
+                            
             return success
             
         except Exception as e:
@@ -359,31 +373,46 @@ class BaseAgentManager:
 
     def get_all_agents(self) -> Dict[int, Dict[str, Any]]:
         """Get information about all agents from database."""
+        db = SessionLocal()
         try:
-            db_agents = db_repository.agents.get_agents_by_framework(self.framework_name)
+            db_agents = db.query(AgentModel).filter(AgentModel.framework == self.framework_name).all()
             
             results = {}
             for agent in db_agents:
-                # Use the AgentModel to_dict method for the base data
-                result = agent.to_dict()
-                results[agent.id] = result
-                
-                # Ensure runtime cache is in sync
-                if agent.id not in self.agents:
-                    self.agents[agent.id] = {
-                        "config": result,
-                        "status": agent.status,
-                        "instance": None,
-                        "results": []
-                    }
+                try:
+                    # Ensure all framework-specific related entities are loaded
+                    # self._ensure_framework_config_loaded(agent)
+                    
+                    # Use the AgentModel to_dict method for the base data
+                    result = agent.to_dict()
+                    results[agent.id] = result
+                    
+                    # Ensure runtime cache is in sync
+                    if agent.id not in self.agents:
+                        self.agents[agent.id] = {
+                            "config": result,
+                            "status": agent.status,
+                            "instance": None,
+                            "results": [],
+                            "error": agent.error
+                        }
+                except Exception as e:
+                    logger.error(f"Error loading agent {agent.id} data: {str(e)}")
+                    results[agent.id] = {"id": agent.id, "name": agent.name, "error": str(e)}
                 
             return results
         
         except Exception as e:
             logger.error(f"Error getting all agents: {str(e)}")
             return {}
-        
+        finally:
+            db.close()
+                
     @property
     def framework_name(self) -> str:
         """Return the name of the framework this manager handles."""
         raise NotImplementedError("Subclasses must implement framework_name property")
+
+    def update_agent_status(self, agent_id: int, status: str, error: str = None):
+        """Update agent status in the database."""
+        db_repository.agents.update_agent_status(agent_id, status, error)

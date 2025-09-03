@@ -161,8 +161,6 @@ class AgnoManager(BaseAgentManager):
         if agent_id in self.agents and self.agents[agent_id]["instance"]:
             # No special cleanup needed for Agno agents
             self.agents[agent_id]["instance"] = None
-            # Update status to stopped
-            db_repository.agents.update_agent_status(agent_id, "stopped")
 
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """

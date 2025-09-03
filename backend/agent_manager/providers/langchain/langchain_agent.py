@@ -73,9 +73,7 @@ class LangChainManager(BaseAgentManager):
         """Clean up LangChain specific resources."""
         if agent_id in self.tools:
             del self.tools[agent_id]
-        # Update status to stopped
-        db_repository.agents.update_agent_status(agent_id, "stopped")
-        
+
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
         Create framework-specific configuration for the agent.
