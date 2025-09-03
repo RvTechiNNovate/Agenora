@@ -4,7 +4,7 @@ Agno agent manager module.
 from typing import Dict, Any, Optional, List, Union
 from sqlalchemy.orm import Session
 from backend.agent_manager.base import BaseAgentManager
-from backend.db.session import SessionLocal
+from backend.db.repository import db_repository
 from backend.db.models import AgentModel, AgnoAgentModel
 from backend.core.logging import get_logger
 from .config import AgnoConfig
@@ -93,7 +93,7 @@ class AgnoManager(BaseAgentManager):
             # Execute the query
             agent_instance.print_response(query, stream=False)
             result=agent_instance.run_response
-            # print(result.content)
+            
             return result.content
         except Exception as e:
             logger.error(f"Error executing query with Agno agent: {str(e)}")
@@ -145,15 +145,15 @@ class AgnoManager(BaseAgentManager):
             self.agents[agent_id]["status"] = "running"
             
             # Update database status
-            super().update_agent_status(agent_id, "running")
-            
+            db_repository.agents.update_agent_status(agent_id, "running")
+
             logger.info(f"Started Agno agent {agent_id}")
             return True
             
         except Exception as e:
             logger.error(f"Error starting Agno agent {agent_id}: {str(e)}")
             self.agents[agent_id]["error"] = str(e)
-            super().update_agent_status(agent_id, "error", str(e))
+            db_repository.agents.update_agent_status(agent_id, "error", str(e))
             return False
     
     def _cleanup_agent_resources(self, agent_id: int):
@@ -162,8 +162,8 @@ class AgnoManager(BaseAgentManager):
             # No special cleanup needed for Agno agents
             self.agents[agent_id]["instance"] = None
             # Update status to stopped
-            super().update_agent_status(agent_id, "stopped")
-    
+            db_repository.agents.update_agent_status(agent_id, "stopped")
+
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
         Create framework-specific configuration for the agent.

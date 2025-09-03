@@ -8,7 +8,7 @@ import time
 from typing import List
 from typing import Dict, List, Optional, Any, Union
 from sqlalchemy.orm import Session
-from backend.db.session import SessionLocal
+from backend.db.repository import db_repository
 from backend.schemas.schemas import FrameworkSchema
 from backend.db.models import AgentModel, LangChainAgentModel
 from backend.core.logging import get_logger
@@ -74,7 +74,7 @@ class LangChainManager(BaseAgentManager):
         if agent_id in self.tools:
             del self.tools[agent_id]
         # Update status to stopped
-        super().update_agent_status(agent_id, "stopped")
+        db_repository.agents.update_agent_status(agent_id, "stopped")
         
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
@@ -193,17 +193,7 @@ class LangChainManager(BaseAgentManager):
             self.agents[agent_id]["instance"] = agent
             self.agents[agent_id]["status"] = "running"
             
-            # Update database
-            db = SessionLocal()
-            try:
-                db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-                if db_agent:
-                    db_agent.status = "running"
-                    db_agent.error = None
-                    db.commit()
-                    logger.info(f"Agent {agent_id} started successfully")
-            finally:
-                db.close()
+            db_repository.agents.update_agent_status(agent_id, "running")
                 
             return True
         
@@ -215,14 +205,7 @@ class LangChainManager(BaseAgentManager):
             self.agents[agent_id]["error"] = str(e)
             
             # Update database
-            db = SessionLocal()
-            try:
-                db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-                if db_agent:
-                    db_agent.error = str(e)
-                    db.commit()
-            finally:
-                db.close()
+            db_repository.agents.update_agent_status(agent_id, "error", error=str(e))
                 
             return False
     

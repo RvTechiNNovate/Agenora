@@ -5,6 +5,7 @@ from typing import Dict, Any, Union
 from sqlalchemy.orm import Session
 from backend.db.models import AgentModel, CrewAIAgentModel
 from backend.core.logging import get_logger
+from backend.db.repository import db_repository
 from backend.schemas.schemas import FrameworkSchema
 from backend.agent_manager.base import BaseAgentManager, running_tasks
 from .config import CrewAIConfig
@@ -170,7 +171,7 @@ class CrewAIManager(BaseAgentManager):
             self.crews[agent_id] = crew
             self.agents[agent_id]["status"] = "running"
             
-            super().update_agent_status(agent_id, "running")
+            db_repository.agents.update_agent_status(agent_id, "running")
            
             return True
         
@@ -181,7 +182,7 @@ class CrewAIManager(BaseAgentManager):
             # Update memory cache
             self.agents[agent_id]["error"] = str(e)
             
-            super().update_agent_status(agent_id, "error", error=str(e))
+            db_repository.agents.update_agent_status(agent_id, "error", error=str(e))
                 
             return False
         
@@ -201,6 +202,7 @@ class CrewAIManager(BaseAgentManager):
         logger.info(f"Running query for agent {agent_id}: {query[:50]}...")
         
         try:
+            # TODO use this crew to kickoff by taking inpute
             crew = self.crews.get(agent_id)
             if not crew:
                 logger.error(f"Agent {agent_id} crew not found")

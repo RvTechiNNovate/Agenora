@@ -1,15 +1,15 @@
 import time
 from typing import List
+from sqlalchemy.orm import Session
 
 from langgraph.prebuilt import create_react_agent
-from backend.db.session import SessionLocal
+from backend.agent_manager.base import BaseAgentManager
 from backend.db.models import AgentModel, LanggraphAgentModel
-from backend.core.logging import get_logger
 from backend.schemas.schemas import FrameworkSchema
 from typing import Dict, List, Optional, Any, Union
-from backend.agent_manager.base import BaseAgentManager
 from backend.llm_manager.manager import llm_provider_manager
-from sqlalchemy.orm import Session
+from backend.db.repository import db_repository
+from backend.core.logging import get_logger
 from .config import LanggraphConfig
 # Set up logger
 logger = get_logger(__name__)
@@ -55,8 +55,7 @@ class LanggraphManager(BaseAgentManager):
             logger.info(f"Agent {agent_id} already running")
             return True  # Already running
             
-        # try:
-        # Get agent config from cache
+       
         config = self.agents[agent_id]["config"]
         
         # Set up language model
@@ -95,18 +94,9 @@ class LanggraphManager(BaseAgentManager):
         self.agents[agent_id]["instance"] = agent
         self.agents[agent_id]["status"] = "running"
         
-        # Update database
-        db = SessionLocal()
-        try:
-            db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-            if db_agent:
-                db_agent.status = "running"
-                db_agent.error = None
-                db.commit()
-                logger.info(f"Agent {agent_id} started successfully")
-        finally:
-            db.close()
-            
+        
+        db_repository.agents.update_agent_status(agent_id, "running")
+
         return True
 
     def _run_query(self, agent_id: int, query: str):
@@ -132,8 +122,8 @@ class LanggraphManager(BaseAgentManager):
         if agent_id in self.tools:
             del self.tools[agent_id]
         # Update status to stopped
-        super().update_agent_status(agent_id, "stopped")
-    
+        db_repository.agents.update_agent_status(agent_id, "stopped")
+
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
         Create framework-specific configuration for the agent.
