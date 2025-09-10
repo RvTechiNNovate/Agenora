@@ -275,9 +275,7 @@ class NewFrameworkManager(BaseAgentManager):
         # Clean up the agent instance
         if agent_id in self.agents:
             self.agents[agent_id]["instance"] = None
-        
-        # Update status to stopped
-        super().update_agent_status(agent_id, "stopped")
+     
 
 # Instantiate the manager
 manager = NewFrameworkManager()

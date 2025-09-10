@@ -121,7 +121,6 @@ class AutoGenManager(BaseAgentManager):
         """Clean up LangChain specific resources."""
         if agent_id in self.tools:
             del self.tools[agent_id]
-        # Update status to stopped
-        super().update_agent_status(agent_id, "stopped")
+
 
 manager = AutoGenManager()
