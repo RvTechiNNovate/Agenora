@@ -11,6 +11,7 @@ from backend.db.models import AgentModel
 from backend.db.repository import db_repository
 from backend.core.config import config
 from backend.core.logging import get_logger
+from backend.mcp_tools.manager import mcp_tools_manager
 
 # Set up logger
 logger = get_logger(__name__)
@@ -42,6 +43,30 @@ class BaseAgentManager:
             A FrameworkSchema object describing the fields required by this framework.
         """
         raise NotImplementedError("Subclasses must implement get_schema")
+        
+    def _get_mcp_tools(self):
+        """
+        Get MCP tools formatted for this framework.
+        
+        Returns:
+            List of MCP tools formatted for this framework
+        """
+        try:
+            return mcp_tools_manager.get_tools_for_framework(self.framework_name)
+        except Exception as e:
+            logger.error(f"Error getting MCP tools for {self.framework_name}: {str(e)}")
+            return []
+            
+    def _ensure_framework_config_loaded(self, agent):
+        """
+        Helper method to ensure related framework-specific configuration is loaded
+        while the database session is still active.
+        
+        This should be overridden by subclasses to load their specific configurations.
+        The base implementation does nothing.
+        """
+        # Base implementation does nothing
+        pass
         
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
@@ -92,6 +117,8 @@ class BaseAgentManager:
             
             for agent in db_agents:
                 try:
+                    # Let the specific framework manager ensure it loads all needed data while session is active
+                    self._ensure_framework_config_loaded(agent)
                     
                     # Create base config with common fields
                     config = {
@@ -381,7 +408,6 @@ class BaseAgentManager:
             for agent in db_agents:
                 try:
                     # Ensure all framework-specific related entities are loaded
-                    # self._ensure_framework_config_loaded(agent)
                     
                     # Use the AgentModel to_dict method for the base data
                     result = agent.to_dict()

@@ -306,7 +306,7 @@ class AgentService:
             if task_dict.get("model_settings"):
                 task_dict["model_config"] = task_dict.pop("model_settings")
             
-            # TODO: Handle framework-specific fields
+            # TODO: Handle framework-specific fields from UI
             if framework == "crewai":
                 task_dict["expected_output"] = agent_data.get("expected_output", "Sort response")
             

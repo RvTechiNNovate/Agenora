@@ -15,7 +15,8 @@ from backend.api.routes import (
     agent_execution_router,
     framework_router,
     system_router,
-    settings_router
+    settings_router,
+    mcp_tools_router
 )
 
 
@@ -59,6 +60,7 @@ app.include_router(agent_execution_router)
 app.include_router(framework_router)
 app.include_router(system_router)
 app.include_router(settings_router)
+app.include_router(mcp_tools_router)
 
 # Add request logging middleware
 @app.middleware("http")

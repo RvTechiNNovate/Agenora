@@ -7,15 +7,25 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production
 
-# Install system dependencies
+# Install system dependencies + uv
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc build-essential && \
+    apt-get install -y --no-install-recommends gcc build-essential curl && \
+    pip install --upgrade pip && \
+    pip install uv && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy dependency files
+COPY pyproject.toml uv.lock* requirements.txt* ./
+
+# Install dependencies with uv (faster than pip)
+# 1. Prefer uv.lock if available (frozen versions)
+# 2. Otherwise fallback to requirements.txt
+RUN if [ -f "uv.lock" ]; then \
+        uv sync --frozen --no-dev; \
+    elif [ -f "requirements.txt" ]; then \
+        uv add --system -r requirements.txt; \
+    fi
 
 # Create logs directory
 RUN mkdir -p logs
@@ -30,11 +40,9 @@ EXPOSE 8000
 RUN addgroup --system app && \
     adduser --system --group app
 
-# Give non-root user access to necessary directories
 RUN chown -R app:app /app
 
-# Switch to non-root user
 USER app
 
-# Run the application with Gunicorn for production
+# Run the application with Gunicorn
 CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "300", "backend.api.app:app"]
