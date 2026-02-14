@@ -8,8 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.orm import Session
 from backend.db.session import get_db, SessionLocal
 from backend.db.models import AgentModel
+from backend.db.repository import db_repository
 from backend.core.config import config
 from backend.core.logging import get_logger
+from backend.mcp_tools.manager import mcp_tools_manager
 
 # Set up logger
 logger = get_logger(__name__)
@@ -42,6 +44,30 @@ class BaseAgentManager:
         """
         raise NotImplementedError("Subclasses must implement get_schema")
         
+    def _get_mcp_tools(self):
+        """
+        Get MCP tools formatted for this framework.
+        
+        Returns:
+            List of MCP tools formatted for this framework
+        """
+        try:
+            return mcp_tools_manager.get_tools_for_framework(self.framework_name)
+        except Exception as e:
+            logger.error(f"Error getting MCP tools for {self.framework_name}: {str(e)}")
+            return []
+            
+    def _ensure_framework_config_loaded(self, agent):
+        """
+        Helper method to ensure related framework-specific configuration is loaded
+        while the database session is still active.
+        
+        This should be overridden by subclasses to load their specific configurations.
+        The base implementation does nothing.
+        """
+        # Base implementation does nothing
+        pass
+        
     def _create_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
         Create framework-specific configuration for the agent.
@@ -68,7 +94,7 @@ class BaseAgentManager:
         """
         # Default implementation returns an empty dict - subclasses should override this
         return {}
-        
+
     def _update_framework_config(self, db: Session, db_agent: AgentModel, config: Dict[str, Any]) -> None:
         """
         Update framework-specific configuration for the agent.
@@ -81,35 +107,50 @@ class BaseAgentManager:
         """
         # Default implementation does nothing - subclasses should override this
         pass
-    
+            
     def _load_agents_from_db(self):
         """Load existing agents from the database into memory."""
+        db = SessionLocal()
         try:
-            db = SessionLocal()
+            # Get agents for this framework with an active database session
             db_agents = db.query(AgentModel).filter(AgentModel.framework == self.framework_name).all()
             
             for agent in db_agents:
-                # Create base config with common fields
-                config = {
-                    "name": agent.name,
-                    "description": agent.description,
-                    "framework": agent.framework,
-                    "model": agent.model,
-                    "model_config": agent.model_config,
-                }
-                
-                # Let subclasses add framework-specific configuration
-                framework_config = self._get_framework_config(agent)
-                if framework_config:
-                    config.update(framework_config)
+                try:
+                    # Let the specific framework manager ensure it loads all needed data while session is active
+                    self._ensure_framework_config_loaded(agent)
+                    
+                    # Create base config with common fields
+                    config = {
+                        "name": agent.name,
+                        "description": agent.description,
+                        "framework": agent.framework,
+                        "model": agent.model,
+                        "model_config": agent.model_config,
+                    }
+                    
+                    # Let subclasses add framework-specific configuration
+                    framework_config = self._get_framework_config(agent)
+                    if framework_config:
+                        config.update(framework_config)
 
-                self.agents[agent.id] = {
-                    "config": config,
-                    "status": agent.status,
-                    "instance": None,
-                    "results": [],
-                    "error": agent.error
-                }
+                    self.agents[agent.id] = {
+                        "config": config,
+                        "status": agent.status,
+                        "instance": None,
+                        "results": [],
+                        "error": agent.error
+                    }
+                except Exception as e:
+                    logger.error(f"Error loading agent {agent.id}: {str(e)}")
+                    # Still add the agent to the cache, but mark it with the error
+                    self.agents[agent.id] = {
+                        "config": {"name": agent.name, "framework": agent.framework},
+                        "status": "error",
+                        "instance": None,
+                        "results": [],
+                        "error": str(e)
+                    }
             
             logger.info(f"Loaded {len(db_agents)} {self.framework_name} agents from database")
             
@@ -117,36 +158,30 @@ class BaseAgentManager:
             logger.error(f"Error loading {self.framework_name} agents from database: {str(e)}")
         finally:
             db.close()
-    
+            
     def create_agent(self, config: Dict[str, Any]) -> int:
         """Create a new agent with the given configuration and store in database."""
         try:
             # Set the framework name
             config["framework"] = self.framework_name
             
-            # Create database record
-            db = SessionLocal()
-            
-            # Create base agent model
-            db_agent = AgentModel(
-                name=config["name"],
-                description=config.get("description"),
-                framework=self.framework_name,
-                model=config.get("model"),
-                model_config=config.get("model_config"),
-                status="stopped"
-            )
-            db.add(db_agent)
-            db.flush()  # Get the ID without committing
+            # Create database record using repository
+            agent_id = db_repository.agents.create_agent(config)
             
             # Add framework-specific configuration
-            # This is where we delegate to subclasses
-            self._create_framework_config(db, db_agent, config)
-
-            db.commit()
-            db.refresh(db_agent)
-            
-            agent_id = db_agent.id
+            # This requires a database session for subclasses
+            db = SessionLocal()
+            try:
+                db_agent = db_repository.agents.get_agent_by_id(agent_id)
+                if db_agent:
+                    self._create_framework_config(db, db_agent, config)
+                    db.commit()
+            except Exception as e:
+                logger.error(f"Error creating framework config: {str(e)}")
+                db.rollback()
+                raise
+            finally:
+                db.close()
             
             # Store in memory cache
             self.agents[agent_id] = {
@@ -162,8 +197,6 @@ class BaseAgentManager:
         except Exception as e:
             logger.error(f"Error creating agent: {str(e)}")
             raise
-        finally:
-            db.close()
     
     def start_agent(self, agent_id: int) -> bool:
         """
@@ -190,18 +223,12 @@ class BaseAgentManager:
                 
             self.agents[agent_id]["status"] = "stopped"
             
-            # Update database
-            db = SessionLocal()
-            try:
-                db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-                if db_agent:
-                    db_agent.status = "stopped"
-                    db.commit()
-                    logger.info(f"Agent {agent_id} stopped successfully")
-            finally:
-                db.close()
-                
-            return True
+            # Update database using repository
+            success = db_repository.agents.update_agent_status(agent_id, "stopped")
+            if success:
+                logger.info(f"Agent {agent_id} stopped successfully")
+            
+            return success
         
         except Exception as e:
             logger.error(f"Error stopping agent {agent_id}: {str(e)}")
@@ -224,14 +251,8 @@ class BaseAgentManager:
             return {"error": "Agent not running. Please start the agent first."}
         
         # Store query in database
-        db = SessionLocal()
-        try:
-            # Record the query attempt in the DB (if we had a query history table)
-            pass
-        except Exception as e:
-            logger.error(f"Error recording query: {str(e)}")
-        finally:
-            db.close()
+        # TODO: Implement query history using repository when QueryModel is available
+        # db_repository.queries.create_query(agent_id, query)
         
         retries = 0
         last_error = None
@@ -299,30 +320,20 @@ class BaseAgentManager:
             if self.agents[agent_id]["status"] == "running":
                 self.stop_agent(agent_id)
             
-            # Remove from database
-            db = SessionLocal()
-            db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-            if not db_agent:
-                logger.warning(f"Agent {agent_id} not found in database")
-                return False
-                
-            # Delete the agent from database
-            db.delete(db_agent)
-            db.commit()
+            # Delete from database using repository
+            success = db_repository.agents.delete_agent(agent_id)
             
-            # Clean up any resources and remove from memory cache
-            self._cleanup_agent_resources(agent_id)
-            if agent_id in self.agents:
-                del self.agents[agent_id]
-            
-            logger.info(f"Agent {agent_id} deleted successfully")
-            return True
+            if success:
+                # Clean up any resources and remove from memory cache
+                self._cleanup_agent_resources(agent_id)
+                if agent_id in self.agents:
+                    del self.agents[agent_id]
+                            
+            return success
             
         except Exception as e:
             logger.error(f"Error deleting agent {agent_id}: {str(e)}")
             return False
-        finally:
-            db.close()
 
     def update_agent(self, agent_id: int, config: Dict[str, Any]) -> bool:
         """Update an existing agent with the given configuration and store in database."""
@@ -334,24 +345,29 @@ class BaseAgentManager:
             # Set the framework name (don't allow changing framework)
             config["framework"] = self.framework_name
             
-            # Update database record
-            db = SessionLocal()
-            db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
+            # Update database record using repository
+            success = db_repository.agents.update_agent(agent_id, config)
+            
+            if not success:
+                return False
+            
+            # Get updated agent from database for framework-specific config
+            db_agent = db_repository.agents.get_agent_by_id(agent_id)
             if not db_agent:
-                logger.warning(f"Agent {agent_id} not found in database")
+                logger.warning(f"Agent {agent_id} not found in database after update")
                 return False
                 
-            # Update base fields
-            db_agent.name = config.get("name", db_agent.name)
-            db_agent.description = config.get("description", db_agent.description)
-            db_agent.model = config.get("model", db_agent.model)
-            db_agent.model_config = config.get("model_config", db_agent.model_config)
-            
             # Update framework-specific fields
-            # Let subclasses handle this part
-            self._update_framework_config(db, db_agent, config)
-            
-            db.commit()
+            db = SessionLocal()
+            try:
+                self._update_framework_config(db, db_agent, config)
+                db.commit()
+            except Exception as e:
+                logger.error(f"Error updating framework config: {str(e)}")
+                db.rollback()
+                return False
+            finally:
+                db.close()
             
             # Update memory cache with framework-specific config
             cache_config = {
@@ -381,29 +397,34 @@ class BaseAgentManager:
         except Exception as e:
             logger.error(f"Error updating agent: {str(e)}")
             return False
-        finally:
-            db.close()
 
     def get_all_agents(self) -> Dict[int, Dict[str, Any]]:
         """Get information about all agents from database."""
+        db = SessionLocal()
         try:
-            db = SessionLocal()
             db_agents = db.query(AgentModel).filter(AgentModel.framework == self.framework_name).all()
             
             results = {}
             for agent in db_agents:
-                # Use the AgentModel to_dict method for the base data
-                result = agent.to_dict()
-                results[agent.id] = result
-                
-                # Ensure runtime cache is in sync
-                if agent.id not in self.agents:
-                    self.agents[agent.id] = {
-                        "config": result,
-                        "status": agent.status,
-                        "instance": None,
-                        "results": []
-                    }
+                try:
+                    # Ensure all framework-specific related entities are loaded
+                    
+                    # Use the AgentModel to_dict method for the base data
+                    result = agent.to_dict()
+                    results[agent.id] = result
+                    
+                    # Ensure runtime cache is in sync
+                    if agent.id not in self.agents:
+                        self.agents[agent.id] = {
+                            "config": result,
+                            "status": agent.status,
+                            "instance": None,
+                            "results": [],
+                            "error": agent.error
+                        }
+                except Exception as e:
+                    logger.error(f"Error loading agent {agent.id} data: {str(e)}")
+                    results[agent.id] = {"id": agent.id, "name": agent.name, "error": str(e)}
                 
             return results
         
@@ -412,26 +433,12 @@ class BaseAgentManager:
             return {}
         finally:
             db.close()
-    
-    def update_agent_status(self, agent_id: int, status: str, error: str = None):
-        """Update agent status in the database."""
-        from backend.db.session import SessionLocal
-        
-        try:
-            db = SessionLocal()
-            db_agent = db.query(AgentModel).filter(AgentModel.id == agent_id).first()
-            if db_agent:
-                db_agent.status = status
-                if error:
-                    db_agent.error = error
-                db.commit()
-                logger.info(f"Updated agent {agent_id} status to {status}")
-        except Exception as e:
-            logger.error(f"Error updating agent status: {str(e)}")
-        finally:
-            db.close()
-    
+                
     @property
     def framework_name(self) -> str:
         """Return the name of the framework this manager handles."""
         raise NotImplementedError("Subclasses must implement framework_name property")
+
+    def update_agent_status(self, agent_id: int, status: str, error: str = None):
+        """Update agent status in the database."""
+        db_repository.agents.update_agent_status(agent_id, status, error)

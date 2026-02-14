@@ -1,26 +1,22 @@
-from fastapi import FastAPI, Request, Response, Depends, HTTPException, status
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, create_model, validator
-from typing import Dict, Any, Optional, List, Union, Type, get_type_hints
-import os
-import logging
+
 import time
 from contextlib import asynccontextmanager
-from sqlalchemy.orm import Session
 
 # Import local modules
 from backend.core.config import config
 from backend.db.session import init_db
 from backend.core.logging import get_logger
-from backend.utils.security import verify_api_key
 from backend.api.routes import (
     agent_router,
     agent_execution_router,
     framework_router,
     system_router,
-    settings_router
+    settings_router,
+    mcp_tools_router
 )
 
 
@@ -64,6 +60,7 @@ app.include_router(agent_execution_router)
 app.include_router(framework_router)
 app.include_router(system_router)
 app.include_router(settings_router)
+app.include_router(mcp_tools_router)
 
 # Add request logging middleware
 @app.middleware("http")

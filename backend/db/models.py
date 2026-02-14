@@ -8,7 +8,6 @@ from sqlalchemy import (
     Column, 
     Integer,
     String,
-    Float,
     Boolean,
     JSON,
     DateTime,
@@ -341,6 +340,11 @@ class AgentVersionModel(Base):
                 "instructions": agent.agno_config.instructions,
                 "markdown": agent.agno_config.markdown,
                 "stream": agent.agno_config.stream
+            }
+        elif agent.framework == "langgraph" and agent.langgraph_config:
+            version.framework_config = {
+                "tools": agent.langgraph_config.tools,
+                "prompt": agent.langgraph_config.prompt
             }
             
         return version

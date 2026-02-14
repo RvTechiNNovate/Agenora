@@ -59,43 +59,82 @@ It provides built-in token usage & cost tracking, making it easy to monitor perf
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
-### Local Development
+### Prerequisites
+
+* Python 3.11+ (recommended)
+* SQLite (for development) or PostgreSQL (for production)
+* API keys for desired LLM providers (OpenAI, Anthropic, etc.)
+
+---
+
+### Quick Setup with Makefile
+
+Agenora provides a convenient Makefile to simplify setup and execution:
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/RvTechiNNovate/Agenora.git
    cd Agenora
    ```
 
-2. Create a virtual environment:
+2. Run the full setup process (installs Python 3.11, Docker, uv, and dependencies):
 
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
+   make setup
    ```
 
-3. Install dependencies:
+   This command will:
+   - Install Python 3.11 (if not already installed)
+   - Install Docker (if not already installed)
+   - Install uv package manager (if not already installed)
+   - Install all project dependencies
 
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Set up environment variables:
+3. Configure environment variables:
 
    ```bash
    cp backend/.env.example backend/.env
    # Edit backend/.env with your API keys and settings
    ```
 
-5. Run the application:
+4. Run the application:
 
    ```bash
-   python run.py
+   make run
    ```
 
-6. Open [http://localhost:8000](http://localhost:8000) in your browser.
+5. Open [http://localhost:8000](http://localhost:8000) in your browser.
+
+### Available Make Commands
+
+```bash
+make setup             # Full project setup (installs Python, Docker, uv, dependencies)
+make install-deps      # Install project dependencies only (using uv sync)
+make run               # Run the application
+make clean             # Clean up cache files
+make docker            # Build Docker image
+make docker-run        # Run Docker container
+make docker-compose    # Start services with docker-compose
+make docker-stop       # Stop services with docker-compose
+```
+
+### About uv Package Manager
+
+Agenora uses [uv](https://github.com/astral-sh/uv), a fast Python package installer and resolver. It offers several advantages over traditional pip:
+
+- **Speed**: Up to 10-100x faster than pip for installations
+- **Reliable**: Consistent dependency resolution
+- **Modern**: Optimized for today's Python ecosystem
+- **Compatible**: Works with existing requirements files
+
+If you prefer not to use uv, you can still install dependencies with pip:
+
+```bash
+pip install -r requirements.txt
+python run.py
+```
 
 ---
 
